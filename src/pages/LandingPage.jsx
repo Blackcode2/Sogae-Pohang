@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import HeroImage from '../assets/images/landing-photo.png';
 
 function LandingPage() {
