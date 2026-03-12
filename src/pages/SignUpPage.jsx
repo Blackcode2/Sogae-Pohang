@@ -45,7 +45,7 @@ function SignUpPage() {
           <h3 className="text-sm font-semibold text-blue-800 mb-2">가입 가능한 대학교</h3>
           <ul className="text-sm text-blue-700 space-y-1">
             <li>POSTECH (postech.ac.kr)</li>
-            <li>한동대학교 (handong.edu)</li>
+            <li>한동대학교 (handong.ac.kr)</li>
           </ul>
         </div>
 

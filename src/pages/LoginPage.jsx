@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const GoogleIcon = () => (
@@ -13,9 +13,15 @@ const GoogleIcon = () => (
 );
 
 function LoginPage() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, devLogin } = useAuth();
+  const navigate = useNavigate();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleDevLogin = () => {
+    devLogin('doky03115@gmail.com');
+    navigate('/');
+  };
 
   const handleGoogleSignIn = async () => {
     setError('');
@@ -50,8 +56,20 @@ function LoginPage() {
         {error && <p className="mt-4 text-center text-red-500 text-sm">{error}</p>}
 
         <p className="mt-8 text-xs text-center text-gray-400">
-          postech.ac.kr 또는 handong.edu 이메일만 사용 가능합니다
+          postech.ac.kr 또는 handong.ac.kr 이메일만 사용 가능합니다
         </p>
+
+        {import.meta.env.DEV && (
+          <div className="mt-6 pt-6 border-t border-dashed border-gray-200">
+            <p className="text-xs text-center text-orange-400 mb-3">개발 모드</p>
+            <button
+              onClick={handleDevLogin}
+              className="w-full p-3 rounded-lg bg-orange-100 text-orange-700 text-sm font-semibold hover:bg-orange-200 transition-all duration-200"
+            >
+              로그인 없이 둘러보기 (Dev)
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

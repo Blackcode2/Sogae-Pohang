@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Background circle -->
+  <circle cx="24" cy="24" r="22" fill="#007AFF"/>
+  <!-- Heart -->
+  <path d="M24 20 C24 14, 16 12, 16 18 C16 22, 24 30, 24 30 C24 30, 32 22, 32 18 C32 12, 24 14, 24 20Z" fill="white"/>
+  <!-- Left dot -->
+  <circle cx="12" cy="24" r="3" fill="white" opacity="0.6"/>
+  <!-- Right dot -->
+  <circle cx="36" cy="24" r="3" fill="white" opacity="0.6"/>
+  <!-- Lines -->
+  <line x1="15" y1="24" x2="19" y2="22" stroke="white" stroke-width="1.5" opacity="0.5"/>
+  <line x1="33" y1="24" x2="29" y2="22" stroke="white" stroke-width="1.5" opacity="0.5"/>
+</svg>

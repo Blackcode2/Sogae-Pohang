@@ -22,17 +22,28 @@ export function AuthProvider({ children }) {
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/profile`,
+      },
     });
     return { error };
   };
 
   const signOut = async () => {
+    setUser(null);
     const { error } = await supabase.auth.signOut();
     return { error };
   };
 
+  const devLogin = (email) => {
+    setUser({
+      id: 'dev-user-' + Date.now(),
+      email: email || 'doky03115@gmail.com',
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut, devLogin }}>
       {children}
     </AuthContext.Provider>
   );

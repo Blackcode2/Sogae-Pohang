@@ -87,7 +87,7 @@ University students in Pohang can sign up, fill out detailed profiles, apply for
   - File: `src/pages/SignUpPage.jsx`
   - Remove email/password form
   - Keep only Google OAuth button
-  - Validate email domain (postech.ac.kr, handong.edu) after OAuth callback
+  - Validate email domain (postech.ac.kr, handong.ac.kr) after OAuth callback
 
 - [ ] **Task 1.4**: Create ProtectedRoute component
   - File: `src/components/ProtectedRoute.jsx`

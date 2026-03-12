@@ -12,16 +12,12 @@ function SectionCard({ title, children }) {
   );
 }
 
-function InfoRow({ label, value, isPrivate }) {
+function InfoRow({ label, value }) {
   return (
     <div className="flex justify-between py-2 border-b border-gray-100 last:border-0">
       <span className="text-sm text-gray-500">{label}</span>
       <span className="text-sm font-medium text-gray-800">
-        {isPrivate ? (
-          <span className="text-gray-400">비공개</span>
-        ) : (
-          value || <span className="text-gray-300">-</span>
-        )}
+        {value || <span className="text-gray-300">-</span>}
       </span>
     </div>
   );
@@ -31,7 +27,8 @@ function ProfilePage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
-  const [ideal, setIdeal] = useState(null);
+  const [matches, setMatches] = useState([]);
+  const [chatRooms, setChatRooms] = useState({}); // matchId -> roomId
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -44,14 +41,43 @@ function ProfilePage() {
         .eq('user_id', user.id)
         .single();
 
-      const { data: idealData } = await supabase
-        .from('ideal_preferences')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
       setProfile(profileData);
-      setIdeal(idealData);
+
+      // Fetch matches where user is involved
+      const { data: matchData } = await supabase
+        .from('matches')
+        .select('*')
+        .or(`male_user_id.eq.${user.id},female_user_id.eq.${user.id}`);
+
+      if (matchData) {
+        // For each match, fetch the partner's basic profile
+        const enriched = await Promise.all(matchData.map(async (m) => {
+          const partnerId = m.male_user_id === user.id ? m.female_user_id : m.male_user_id;
+          const { data: partnerProfile } = await supabase
+            .from('profiles')
+            .select('nickname, university, department')
+            .eq('user_id', partnerId)
+            .single();
+          return { ...m, partner: partnerProfile };
+        }));
+        setMatches(enriched);
+
+        // Fetch chat rooms for matches
+        const matchIds = enriched.map((m) => m.id);
+        if (matchIds.length > 0) {
+          const { data: rooms } = await supabase
+            .from('chat_rooms')
+            .select('id, match_id')
+            .in('match_id', matchIds);
+
+          if (rooms) {
+            const roomMap = {};
+            rooms.forEach((r) => { roomMap[r.match_id] = r.id; });
+            setChatRooms(roomMap);
+          }
+        }
+      }
+
       setLoading(false);
     }
 
@@ -61,6 +87,7 @@ function ProfilePage() {
   const handleDeleteAccount = async () => {
     setDeleting(true);
     await supabase.from('ideal_preferences').delete().eq('user_id', user.id);
+    await supabase.from('blind_profiles').delete().eq('user_id', user.id);
     await supabase.from('profiles').delete().eq('user_id', user.id);
     await signOut();
     navigate('/');
@@ -118,54 +145,57 @@ function ProfilePage() {
           <InfoRow label="학과/학부" value={profile.department} />
         </SectionCard>
 
-        {/* Physical Info */}
-        <SectionCard title="외형 정보">
-          <InfoRow label="키" value={profile.height && `${profile.height}cm`} isPrivate={!profile.height_public} />
-          <InfoRow label="몸무게" value={profile.weight && `${profile.weight}kg`} isPrivate={!profile.weight_public} />
-          <InfoRow label="몸매" value={profile.body_type} />
-          <InfoRow label="얼굴상" value={profile.face_type} />
-          <InfoRow label="눈" value={profile.eye_type} />
+        {/* Participated Events — placeholder for Phase 3 */}
+        <SectionCard title="참여한 소개팅">
+          <div className="text-center py-4">
+            <p className="text-gray-400 text-sm">아직 참여한 소개팅이 없습니다.</p>
+          </div>
         </SectionCard>
-
-        {/* Lifestyle */}
-        <SectionCard title="라이프스타일">
-          <InfoRow label="MBTI" value={profile.mbti} />
-          <InfoRow label="종교" value={profile.religion} />
-          <InfoRow label="담배" value={profile.smoking} />
-          <InfoRow label="음주" value={profile.drinking} />
-          <InfoRow label="타투" value={profile.tattoo} />
-          <InfoRow label="연락 주기" value={profile.contact_frequency} />
-          <InfoRow label="취미" value={profile.hobbies?.join(', ')} />
-        </SectionCard>
-
-        {/* Contact */}
-        <SectionCard title="연락 수단">
-          <InfoRow label={profile.contact_method} value={profile.contact_value} />
-        </SectionCard>
-
-        {/* Ideal Type */}
-        {ideal && (
-          <SectionCard title="이상형 정보">
-            <InfoRow label="키" value={ideal.height && `${ideal.height}cm 이상`} />
-            <InfoRow label="몸무게" value={ideal.weight && `${ideal.weight}kg 이하`} />
-            <InfoRow label="몸매" value={ideal.body_type} />
-            <InfoRow label="얼굴상" value={ideal.face_type} />
-            <InfoRow label="눈" value={ideal.eye_type} />
-            <InfoRow label="MBTI" value={ideal.mbti} />
-            <InfoRow label="종교" value={ideal.religion} />
-            <InfoRow label="담배" value={ideal.smoking} />
-            <InfoRow label="음주" value={ideal.drinking} />
-            <InfoRow label="타투" value={ideal.tattoo} />
-            <InfoRow label="연락 주기" value={ideal.contact_frequency} />
-            <InfoRow label="취미" value={ideal.hobbies?.join(', ')} />
-          </SectionCard>
-        )}
 
         {/* Matching Status */}
         <SectionCard title="매칭 현황">
-          <div className="text-center py-4">
-            <p className="text-gray-400 text-sm">아직 매칭 내역이 없습니다.</p>
-          </div>
+          {matches.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-gray-400 text-sm">아직 매칭 내역이 없습니다.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {matches.map((m) => (
+                <div key={m.id} className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      m.status === 'matched' ? 'bg-green-100 text-green-700' :
+                      m.status === 'contacted' ? 'bg-blue-100 text-blue-700' :
+                      m.status === 'completed' ? 'bg-purple-100 text-purple-700' :
+                      'bg-gray-100 text-gray-500'
+                    }`}>
+                      {m.status === 'matched' ? '매칭됨' :
+                       m.status === 'contacted' ? '연락 중' :
+                       m.status === 'completed' ? '완료' : '취소됨'}
+                    </span>
+                  </div>
+                  {m.partner ? (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{m.partner.nickname}</p>
+                        <p className="text-xs text-gray-500">{m.partner.university} · {m.partner.department}</p>
+                      </div>
+                      {chatRooms[m.id] && (
+                        <Link
+                          to={`/chat/${chatRooms[m.id]}`}
+                          className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary-dark transition-all"
+                        >
+                          채팅방 가기
+                        </Link>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">상대방 정보를 불러올 수 없습니다.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
         {/* Account Deletion */}

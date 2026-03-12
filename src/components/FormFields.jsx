@@ -139,6 +139,72 @@ export function CheckboxGroup({ label, name, values, onChange, options }) {
   );
 }
 
+export function RangeInput({ label, id, minValue, maxValue, onMinChange, onMaxChange, unit, minPlaceholder, maxPlaceholder }) {
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          id={`${id}-min`}
+          type="number"
+          value={minValue}
+          onChange={(e) => onMinChange(e.target.value)}
+          placeholder={minPlaceholder || '최소'}
+          className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+        />
+        <span className="text-gray-400 text-sm">~</span>
+        <input
+          id={`${id}-max`}
+          type="number"
+          value={maxValue}
+          onChange={(e) => onMaxChange(e.target.value)}
+          placeholder={maxPlaceholder || '최대'}
+          className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+        />
+        {unit && <span className="text-sm text-gray-500 whitespace-nowrap">{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+export function TextArea({ label, id, value, onChange, placeholder, required, rows }) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-semibold text-gray-700 mb-1">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+      <textarea
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        required={required}
+        rows={rows || 3}
+        className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm resize-none"
+      />
+    </div>
+  );
+}
+
+export function FileInput({ label, id, onChange, accept, note }) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-semibold text-gray-700 mb-1">
+        {label}
+      </label>
+      {note && <p className="text-xs text-gray-400 mb-2">{note}</p>}
+      <input
+        id={id}
+        type="file"
+        accept={accept}
+        onChange={(e) => onChange(e.target.files[0] || null)}
+        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+      />
+    </div>
+  );
+}
+
 export function ToggleField({ label, id, value, onChange, publicValue, onPublicChange }) {
   return (
     <div>
