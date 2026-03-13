@@ -1,12 +1,11 @@
 import {
-  RadioGroup, CheckboxGroup, SelectInput, TextInput, ToggleField,
+  RadioGroup, CheckboxGroup, SelectInput, ToggleField,
 } from './FormFields';
 import {
   BODY_TYPES, FACE_TYPES, EYE_TYPES, MBTI_TYPES, RELIGION_OPTIONS,
   SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, MILITARY_SERVICE_OPTIONS,
   CONTACT_FREQUENCY_OPTIONS,
   INTEREST_OPTIONS, PERSONALITY_OPTIONS, DATE_STYLE_OPTIONS, DATING_STYLE_OPTIONS,
-  CONTACT_METHOD_OPTIONS,
 } from '../lib/constants';
 
 function BlindProfileForm({ data, onChange, gender }) {
@@ -86,26 +85,6 @@ function BlindProfileForm({ data, onChange, gender }) {
         options={DATING_STYLE_OPTIONS} required
       />
 
-      {/* 연락 수단 */}
-      <h3 className="text-lg font-bold text-gray-800 pt-4">연락 수단</h3>
-      <p className="text-sm text-gray-500">매칭 완료 후 상대방에게 전달될 연락 수단입니다.</p>
-      <RadioGroup
-        label="연락 방법" name="contactMethod" value={data.contact_method || ''} onChange={set('contact_method')}
-        options={CONTACT_METHOD_OPTIONS} required
-      />
-      {data.contact_method && (
-        <TextInput
-          label={`${data.contact_method} 입력`} id="contactValue"
-          value={data.contact_value || ''} onChange={set('contact_value')}
-          placeholder={
-            data.contact_method === '전화번호' ? '010-0000-0000' :
-            data.contact_method === '카카오톡 ID' ? '카카오톡 ID' :
-            data.contact_method === '인스타그램' ? '@instagram_id' :
-            '연락처를 입력해주세요'
-          }
-          required
-        />
-      )}
     </div>
   );
 }

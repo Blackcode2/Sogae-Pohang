@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useChat } from '../hooks/useChat';
 import { supabase } from '../lib/supabase';
 
-function ChatBubble({ message, isOwn, senderName }) {
+function ChatBubble({ message, isOwn, isAdmin, senderName }) {
   if (message.message_type === 'system') {
     return (
       <div className="flex justify-center my-2">
@@ -26,17 +26,21 @@ function ChatBubble({ message, isOwn, senderName }) {
     );
   }
 
+  const bubbleColor = isOwn
+    ? 'bg-primary text-white rounded-tr-sm'
+    : isAdmin
+      ? 'bg-amber-100 text-amber-900 rounded-tl-sm'
+      : 'bg-gray-100 text-gray-800 rounded-tl-sm';
+
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}>
       <div className={`max-w-[70%] ${isOwn ? 'order-2' : ''}`}>
         {!isOwn && (
-          <p className="text-xs text-gray-400 mb-1 ml-1">{senderName}</p>
+          <p className={`text-xs mb-1 ml-1 ${isAdmin ? 'text-amber-500 font-semibold' : 'text-gray-400'}`}>
+            {isAdmin ? '주선자' : senderName}
+          </p>
         )}
-        <div className={`px-4 py-2 rounded-2xl text-sm ${
-          isOwn
-            ? 'bg-primary text-white rounded-tr-sm'
-            : 'bg-gray-100 text-gray-800 rounded-tl-sm'
-        }`}>
+        <div className={`px-4 py-2 rounded-2xl text-sm ${bubbleColor}`}>
           {message.content}
         </div>
         <p className={`text-[10px] text-gray-300 mt-0.5 ${isOwn ? 'text-right mr-1' : 'ml-1'}`}>
@@ -55,10 +59,12 @@ function ChatPage() {
   const [roomInfo, setRoomInfo] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // Build sender name map from participants
+  // Build sender name and role maps from participants
   const senderNames = {};
+  const senderRoles = {};
   participants.forEach((p) => {
     senderNames[p.user_id] = p.profile?.nickname || (p.role === 'admin' ? '주선자' : '참여자');
+    senderRoles[p.user_id] = p.role;
   });
 
   useEffect(() => {
@@ -118,6 +124,7 @@ function ChatPage() {
             key={msg.id}
             message={msg}
             isOwn={msg.sender_id === user?.id}
+            isAdmin={senderRoles[msg.sender_id] === 'admin'}
             senderName={senderNames[msg.sender_id] || '알 수 없음'}
           />
         ))}
@@ -125,22 +132,28 @@ function ChatPage() {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSend} className="bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shrink-0">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="메시지를 입력하세요..."
-          className="flex-1 p-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300 transition-all"
-        >
-          전송
-        </button>
-      </form>
+      {roomInfo?.status === 'closed' ? (
+        <div className="bg-gray-100 border-t border-gray-200 px-4 py-4 text-center shrink-0">
+          <p className="text-sm text-gray-400">채팅방이 종료되었습니다.</p>
+        </div>
+      ) : (
+        <form onSubmit={handleSend} className="bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shrink-0">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="메시지를 입력하세요..."
+            className="flex-1 p-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300 transition-all"
+          >
+            전송
+          </button>
+        </form>
+      )}
     </div>
   );
 }

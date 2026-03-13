@@ -1,13 +1,56 @@
 import { useState } from 'react';
 
-const MAX_SIZE_MB = 5;
+const MAX_SIZE_MB = 10;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+const MAX_DIMENSION = 1920;
+const JPEG_QUALITY = 0.85;
+
+function resizeImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // No resize needed if already within limits
+      if (width <= MAX_DIMENSION && height <= MAX_DIMENSION) {
+        resolve(file);
+        return;
+      }
+
+      // Scale down preserving aspect ratio
+      if (width > height) {
+        height = Math.round((height * MAX_DIMENSION) / width);
+        width = MAX_DIMENSION;
+      } else {
+        width = Math.round((width * MAX_DIMENSION) / height);
+        height = MAX_DIMENSION;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          const resized = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
+          resolve(resized);
+        },
+        'image/jpeg',
+        JPEG_QUALITY
+      );
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 function PhotoUpload({ file, onFileChange, required }) {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
+  const [processing, setProcessing] = useState(false);
 
-  const handleChange = (e) => {
+  const handleChange = async (e) => {
     const selected = e.target.files[0];
     setError('');
 
@@ -27,10 +70,14 @@ function PhotoUpload({ file, onFileChange, required }) {
       return;
     }
 
+    setProcessing(true);
+    const resized = await resizeImage(selected);
+    setProcessing(false);
+
     const reader = new FileReader();
     reader.onloadend = () => setPreview(reader.result);
-    reader.readAsDataURL(selected);
-    onFileChange(selected);
+    reader.readAsDataURL(resized);
+    onFileChange(resized);
   };
 
   const handleRemove = () => {
@@ -57,9 +104,10 @@ function PhotoUpload({ file, onFileChange, required }) {
           onChange={handleChange}
           className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
         />
-        <p className="text-xs text-gray-400 mt-1">최대 {MAX_SIZE_MB}MB, 이미지 파일만 가능</p>
+        <p className="text-xs text-gray-400 mt-1">최대 {MAX_SIZE_MB}MB, 이미지 파일만 가능 (자동 리사이징)</p>
       </div>
 
+      {processing && <p className="text-sm text-blue-500">이미지 처리 중...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {preview && (

@@ -1,4 +1,4 @@
-import { RadioGroup, CheckboxGroup, SelectInput, RangeInput } from './FormFields';
+import { RadioGroup, CheckboxGroup, SelectInput, RangeSlider } from './FormFields';
 import {
   BODY_TYPES, FACE_TYPES, EYE_TYPES, MBTI_TYPES, RELIGION_OPTIONS,
   SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, MILITARY_SERVICE_OPTIONS,
@@ -32,13 +32,13 @@ function IdealTypeForm({ data, onChange, gender }) {
         원하는 상대의 조건을 선택해주세요. 선택하지 않으면 &quot;상관없음&quot;으로 처리됩니다.
       </p>
 
-      {/* Height Range */}
+      {/* Height Range Slider */}
       <div>
-        <RangeInput
-          label="희망 키 (cm)" id="idealHeight"
-          minValue={data.height_min || ''} maxValue={data.height_max || ''}
+        <RangeSlider
+          label="희망 키"
+          minValue={data.height_min || 140} maxValue={data.height_max || 200}
           onMinChange={set('height_min')} onMaxChange={set('height_max')}
-          unit="cm" minPlaceholder="예: 160" maxPlaceholder="예: 180"
+          unit="cm" min={140} max={200} step={1}
         />
         <NocareButton
           active={!data.height_min && !data.height_max}

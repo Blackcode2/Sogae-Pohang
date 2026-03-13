@@ -251,8 +251,10 @@ Image upload with preview, size validation, and guidance text.
 | required | boolean | Whether photo is mandatory |
 
 **Features**:
-- 5MB 파일 크기 제한
+- 10MB 파일 크기 제한
 - 이미지 파일만 허용 (`image/*`)
+- **자동 리사이징**: 긴 변 1920px 초과 시 비율 유지하며 축소, JPEG 85% 품질로 변환
+- 리사이징 처리 중 "이미지 처리 중..." 표시
 - 선택 시 미리보기 표시
 - 안내문구: 주선자만 확인, 프로필 일치 참고용
 - required=true일 때 미첨부 시 경고 메시지
@@ -266,13 +268,14 @@ Image upload with preview, size validation, and guidance text.
 Admin chat management interface. Used in AdminPage "채팅 관리" tab.
 
 **Features**:
-- **전체 공지**: 모든 활성 채팅방에 시스템 메시지 일괄 전송
-- **채팅방 목록**: 커플 닉네임, 최근 메시지, 메시지 수 배지, 활성/종료 상태
+- **소개팅별 채팅 그룹화**: 이벤트 탭으로 채팅방 필터링 (이벤트 제목 + 읽지 않은 메시지/멘션 배지)
+- **전체 공지**: 선택된 이벤트 또는 모든 활성 채팅방에 시스템 메시지 일괄 전송
+- **채팅방 목록**: 커플 닉네임, 최근 메시지, 읽지 않은 메시지 수 배지(빨강), @주선자 태그 알림 배지(앰버), 활성/종료 상태
+- **참가자 프로필 카드**: 채팅방 상단에 매칭된 두 참가자의 프로필 + 제출 사진 표시 (applications.photo_url)
 - **개별 채팅방** (AdminChatRoom):
   - 메시지 읽기/쓰기 (useChat 훅)
   - 어드민 자동 참여자 등록
-  - "연락처 교환" 버튼: 양쪽 blind_profiles의 연락처를 contact_share 메시지로 전송
-  - "진행 의사 확인" 버튼: 정형화된 시스템 메시지 전송
+  - 읽음 처리: 채팅방 열기/닫기 시 `last_read_at` 업데이트
 
 ---
 
@@ -368,18 +371,24 @@ const { messages, participants, loading, sendMessage } = useChat(roomId);
 Admin hook for managing all chat rooms.
 
 ```jsx
-const { rooms, loading, refetch } = useAdminChat();
+const { rooms, loading, markAsRead, refetch } = useAdminChat();
 ```
 
 | Return | Type | Description |
 |--------|------|-------------|
 | rooms | array | All chat rooms with participants, messages, latest message |
 | loading | boolean | Initial loading state |
+| markAsRead | async function(roomId) | Update `last_read_at` for admin in the specified room |
 | refetch | function | Manually refetch all rooms |
 
-**Enriched room data**: `latestMessage`, `messageCount`, `memberNames`
+**Enriched room data**: `latestMessage`, `memberNames`, `unreadCount`, `hasMention`, `eventTitle`
 
-**Behavior**: Subscribes to all new `chat_messages` INSERT events, refetches rooms on change.
+**Behavior**:
+- Subscribes to all new `chat_messages` INSERT events, refetches rooms on change
+- Profiles fetched separately (no FK join) via `.in('user_id', userIds)`
+- Fetches event info for room grouping by event
+- Calculates `unreadCount` and `hasMention` based on `last_read_at` timestamp
+- `hasMention` detects '@주선자' in unread messages
 
 ---
 

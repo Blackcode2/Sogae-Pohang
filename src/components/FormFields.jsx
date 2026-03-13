@@ -139,29 +139,71 @@ export function CheckboxGroup({ label, name, values, onChange, options }) {
   );
 }
 
-export function RangeInput({ label, id, minValue, maxValue, onMinChange, onMaxChange, unit, minPlaceholder, maxPlaceholder }) {
+export function RangeSlider({ label, minValue, maxValue, onMinChange, onMaxChange, unit, min = 140, max = 200, step = 1 }) {
+  const currentMin = minValue || min;
+  const currentMax = maxValue || max;
+
+  const handleMinChange = (e) => {
+    const val = Number(e.target.value);
+    onMinChange(val >= currentMax ? currentMax - step : val);
+  };
+
+  const handleMaxChange = (e) => {
+    const val = Number(e.target.value);
+    onMaxChange(val <= currentMin ? currentMin + step : val);
+  };
+
+  const leftPercent = ((currentMin - min) / (max - min)) * 100;
+  const rightPercent = ((currentMax - min) / (max - min)) * 100;
+
   return (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>
-      <div className="flex items-center gap-2">
-        <input
-          id={`${id}-min`}
-          type="number"
-          value={minValue}
-          onChange={(e) => onMinChange(e.target.value)}
-          placeholder={minPlaceholder || '최소'}
-          className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+      <div className="text-center text-sm font-medium text-primary mb-3">
+        {currentMin}{unit} ~ {currentMax}{unit}
+      </div>
+      <div className="relative h-2 mx-2">
+        {/* Track background */}
+        <div className="absolute inset-0 rounded-full bg-gray-200" />
+        {/* Active range */}
+        <div
+          className="absolute h-full rounded-full bg-primary"
+          style={{ left: `${leftPercent}%`, right: `${100 - rightPercent}%` }}
         />
-        <span className="text-gray-400 text-sm">~</span>
+        {/* Min slider */}
         <input
-          id={`${id}-max`}
-          type="number"
-          value={maxValue}
-          onChange={(e) => onMaxChange(e.target.value)}
-          placeholder={maxPlaceholder || '최대'}
-          className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+          type="range" min={min} max={max} step={step}
+          value={currentMin}
+          onChange={handleMinChange}
+          className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none
+            [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none
+            [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
+            [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary
+            [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer
+            [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none
+            [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full
+            [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary
+            [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:cursor-pointer"
         />
-        {unit && <span className="text-sm text-gray-500 whitespace-nowrap">{unit}</span>}
+        {/* Max slider */}
+        <input
+          type="range" min={min} max={max} step={step}
+          value={currentMax}
+          onChange={handleMaxChange}
+          className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none
+            [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none
+            [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
+            [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary
+            [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer
+            [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none
+            [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full
+            [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary
+            [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:cursor-pointer"
+        />
+      </div>
+      <div className="flex justify-between text-xs text-gray-400 mt-1 mx-2">
+        <span>{min}{unit}</span>
+        <span>{max}{unit}</span>
       </div>
     </div>
   );

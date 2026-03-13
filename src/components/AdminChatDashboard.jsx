@@ -44,12 +44,47 @@ function AdminChatRoom({ roomId, onClose }) {
   const { messages, participants, loading, sendMessage } = useChat(roomId);
   const [input, setInput] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [memberProfiles, setMemberProfiles] = useState([]);
   const messagesEndRef = useRef(null);
 
   const senderNames = {};
   participants.forEach((p) => {
     senderNames[p.user_id] = p.profile?.nickname || (p.role === 'admin' ? '주선자' : '참여자');
   });
+
+  // Fetch blind profiles for members
+  useEffect(() => {
+    const members = participants.filter((p) => p.role === 'member');
+    if (members.length === 0) return;
+
+    async function fetchMemberProfiles() {
+      const userIds = members.map((m) => m.user_id);
+      const { data: blindData } = await supabase
+        .from('blind_profiles')
+        .select('user_id, body_type, face_type, mbti, smoking, drinking, personality, interests, height, military_service')
+        .in('user_id', userIds);
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('user_id, nickname, university, department, gender, birth_year')
+        .in('user_id', userIds);
+
+      // Fetch photo from applications
+      const { data: appData } = await supabase
+        .from('applications')
+        .select('user_id, photo_url')
+        .in('user_id', userIds);
+      const photoMap = {};
+      (appData || []).forEach((a) => { if (a.photo_url) photoMap[a.user_id] = a.photo_url; });
+
+      const profiles = (profileData || []).map((p) => {
+        const blind = (blindData || []).find((b) => b.user_id === p.user_id);
+        return { ...p, blind, photo_url: photoMap[p.user_id] || null };
+      });
+      setMemberProfiles(profiles);
+    }
+    fetchMemberProfiles();
+  }, [participants]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -114,29 +149,50 @@ function AdminChatRoom({ roomId, onClose }) {
   if (loading) return <p className="text-gray-400 text-sm p-4">로딩 중...</p>;
 
   return (
+    <div>
+    {/* Member Profiles */}
+    {memberProfiles.length > 0 && (
+      <div className="mb-4">
+        <h4 className="text-xs font-bold text-gray-600 mb-2">참가자 프로필</h4>
+        <div className="grid grid-cols-2 gap-3">
+          {memberProfiles.map((p) => (
+            <div key={p.user_id} className={`rounded-xl p-3 text-xs ${
+              p.gender === '남자' ? 'bg-blue-50' : 'bg-pink-50'
+            }`}>
+              {p.photo_url && (
+                <img
+                  src={p.photo_url}
+                  alt={`${p.nickname} 사진`}
+                  className="w-full h-32 object-cover rounded-lg mb-2"
+                />
+              )}
+              <p className={`font-bold mb-1 ${p.gender === '남자' ? 'text-blue-700' : 'text-pink-700'}`}>
+                {p.nickname} <span className="font-normal text-gray-400">({p.gender})</span>
+              </p>
+              <p className="text-gray-500">{p.university} · {p.department}</p>
+              <p className="text-gray-500">{p.birth_year}년생</p>
+              {p.blind && (
+                <div className="mt-1.5 text-gray-500 space-y-0.5">
+                  {p.blind.height && <p>키 {p.blind.height}cm</p>}
+                  <p>{[p.blind.body_type, p.blind.face_type, p.blind.mbti].filter(Boolean).join(' · ')}</p>
+                  <p>{[p.blind.smoking && `흡연: ${p.blind.smoking}`, p.blind.drinking && `음주: ${p.blind.drinking}`].filter(Boolean).join(' · ')}</p>
+                  {p.blind.military_service && <p>군복무: {p.blind.military_service}</p>}
+                  {p.blind.personality?.length > 0 && <p>성격: {p.blind.personality.join(', ')}</p>}
+                  {p.blind.interests?.length > 0 && <p>관심사: {p.blind.interests.join(', ')}</p>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
     <div className="flex flex-col h-[500px] border border-gray-200 rounded-xl overflow-hidden">
       {/* Header */}
       <div className="bg-white border-b px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">← 목록</button>
           <span className="text-sm font-bold text-gray-800">{participants.length}명 참여</span>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleShareContacts}
-            disabled={sharing}
-            className="text-xs px-2 py-1 rounded border border-purple-300 text-purple-600 hover:bg-purple-50 disabled:opacity-50"
-          >
-            연락처 교환
-          </button>
-          <button
-            onClick={async () => {
-              await sendMessage('진행 의사가 있으신가요? 있으시면 서로 연락처를 교환해드리겠습니다!', 'system');
-            }}
-            className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50"
-          >
-            의사 확인
-          </button>
         </div>
       </div>
 
@@ -168,25 +224,43 @@ function AdminChatRoom({ roomId, onClose }) {
         </button>
       </form>
     </div>
+
+    </div>
   );
 }
 
 function AdminChatDashboard() {
-  const { rooms, loading } = useAdminChat();
+  const { rooms, loading, markAsRead, refetch } = useAdminChat();
   const [selectedRoom, setSelectedRoom] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcasting, setBroadcasting] = useState(false);
   const { user } = useAuth();
 
+  // Group rooms by event
+  const eventGroups = {};
+  rooms.forEach((room) => {
+    const eid = room.event_id || 'unknown';
+    if (!eventGroups[eid]) {
+      eventGroups[eid] = { title: room.eventTitle, rooms: [], unreadTotal: 0, hasMention: false };
+    }
+    eventGroups[eid].rooms.push(room);
+    eventGroups[eid].unreadTotal += room.unreadCount;
+    if (room.hasMention) eventGroups[eid].hasMention = true;
+  });
+
+  const eventList = Object.entries(eventGroups);
+  const filteredRooms = selectedEvent ? (eventGroups[selectedEvent]?.rooms || []) : rooms;
+
   const handleBroadcast = async () => {
     if (!broadcastMsg.trim()) return;
-    if (!window.confirm(`모든 활성 채팅방에 메시지를 전송하시겠습니까?\n\n"${broadcastMsg}"`)) return;
+    const targetRooms = filteredRooms.filter((r) => r.status === 'active');
+    const scope = selectedEvent ? `"${eventGroups[selectedEvent]?.title}"의 활성 채팅방` : '모든 활성 채팅방';
+    if (!window.confirm(`${scope}에 메시지를 전송하시겠습니까?\n\n"${broadcastMsg}"`)) return;
 
     setBroadcasting(true);
-    const activeRooms = rooms.filter((r) => r.status === 'active');
 
-    for (const room of activeRooms) {
-      // Ensure admin is participant
+    for (const room of targetRooms) {
       const { data: existing } = await supabase
         .from('chat_participants')
         .select('id')
@@ -214,21 +288,73 @@ function AdminChatDashboard() {
 
   if (loading) return <p className="text-gray-400 text-sm">채팅방 로딩 중...</p>;
 
+  const handleOpenRoom = async (roomId) => {
+    setSelectedRoom(roomId);
+    await markAsRead(roomId);
+  };
+
+  const handleCloseRoom = async () => {
+    if (selectedRoom) await markAsRead(selectedRoom);
+    setSelectedRoom(null);
+    refetch();
+  };
+
   if (selectedRoom) {
-    return <AdminChatRoom roomId={selectedRoom} onClose={() => setSelectedRoom(null)} />;
+    return <AdminChatRoom roomId={selectedRoom} onClose={handleCloseRoom} />;
   }
 
   return (
     <div>
+      {/* Event Filter */}
+      {eventList.length > 1 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setSelectedEvent(null)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              !selectedEvent ? 'bg-primary text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            전체
+          </button>
+          {eventList.map(([eid, group]) => (
+            <button
+              key={eid}
+              onClick={() => setSelectedEvent(eid)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                selectedEvent === eid ? 'bg-primary text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {group.title}
+              {group.unreadTotal > 0 && (
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[16px] text-center ${
+                  selectedEvent === eid ? 'bg-white/30 text-white' : 'bg-red-500 text-white'
+                }`}>
+                  {group.unreadTotal}
+                </span>
+              )}
+              {group.hasMention && (
+                <span className={`text-[10px] font-bold px-1 py-0.5 rounded-full ${
+                  selectedEvent === eid ? 'bg-white/30 text-white' : 'bg-amber-500 text-white'
+                }`}>
+                  @
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Broadcast */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <h3 className="text-sm font-bold text-gray-700 mb-2">전체 공지</h3>
+        <h3 className="text-sm font-bold text-gray-700 mb-2">
+          {selectedEvent ? `"${eventGroups[selectedEvent]?.title}" 공지` : '전체 공지'}
+        </h3>
         <div className="flex gap-2">
           <input
             type="text"
             value={broadcastMsg}
             onChange={(e) => setBroadcastMsg(e.target.value)}
-            placeholder="모든 채팅방에 보낼 메시지..."
+            placeholder={selectedEvent ? '이 소개팅 채팅방에 보낼 메시지...' : '모든 채팅방에 보낼 메시지...'}
             className="flex-1 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
@@ -236,31 +362,38 @@ function AdminChatDashboard() {
             disabled={!broadcastMsg.trim() || broadcasting}
             className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300"
           >
-            {broadcasting ? '전송 중...' : '전체 전송'}
+            {broadcasting ? '전송 중...' : '전송'}
           </button>
         </div>
       </div>
 
       {/* Room List */}
-      {rooms.length === 0 ? (
+      {filteredRooms.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-8 text-center">
           <p className="text-gray-400 text-sm">채팅방이 없습니다.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {rooms.map((room) => (
+          {filteredRooms.map((room) => (
             <button
               key={room.id}
               type="button"
-              onClick={() => setSelectedRoom(room.id)}
-              className="w-full text-left bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-all border border-transparent hover:border-primary/30"
+              onClick={() => handleOpenRoom(room.id)}
+              className={`w-full text-left bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-all border ${
+                room.hasMention ? 'border-amber-300 bg-amber-50/30' : 'border-transparent hover:border-primary/30'
+              }`}
             >
               <div className="flex items-center justify-between mb-1">
                 <h4 className="text-sm font-bold text-gray-800">{room.name}</h4>
                 <div className="flex items-center gap-2">
-                  {room.messageCount > 0 && (
-                    <span className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                      {room.messageCount}
+                  {room.hasMention && (
+                    <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                      @태그
+                    </span>
+                  )}
+                  {room.unreadCount > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                      {room.unreadCount}
                     </span>
                   )}
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -274,7 +407,7 @@ function AdminChatDashboard() {
                 {room.memberNames.join(' & ')}
               </p>
               {room.latestMessage && (
-                <p className="text-xs text-gray-400 truncate">
+                <p className={`text-xs truncate ${room.unreadCount > 0 ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
                   {room.latestMessage.message_type === 'system' ? '[시스템] ' : ''}
                   {room.latestMessage.content}
                 </p>

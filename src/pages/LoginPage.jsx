@@ -12,11 +12,21 @@ const GoogleIcon = () => (
   </svg>
 );
 
+const TEST_USERS = [
+  { email: 'male1@postech.ac.kr', label: '남자1 (POSTECH)' },
+  { email: 'male2@handong.ac.kr', label: '남자2 (한동대)' },
+  { email: 'female1@postech.ac.kr', label: '여자1 (POSTECH)' },
+  { email: 'female2@handong.ac.kr', label: '여자2 (한동대)' },
+  { email: 'doky03115@gmail.com', label: '어드민' },
+];
+const DEV_PASSWORD = 'test1234';
+
 function LoginPage() {
-  const { signInWithGoogle, devLogin } = useAuth();
+  const { signInWithGoogle, devLogin, signUpWithEmail, signInWithEmail } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [devMsg, setDevMsg] = useState('');
 
   const handleDevLogin = () => {
     devLogin('doky03115@gmail.com');
@@ -31,6 +41,41 @@ function LoginPage() {
       setError('Google 로그인에 실패했습니다: ' + error.message);
     }
     setLoading(false);
+  };
+
+  const handleDevSignUp = async (email) => {
+    setDevMsg('');
+    setError('');
+    const { data, error } = await signUpWithEmail(email, DEV_PASSWORD);
+    console.log('signUp result:', { data, error });
+    if (error) {
+      if (error.message.includes('already registered')) {
+        setDevMsg(`${email} — 이미 가입됨. 로그인 시도...`);
+        await handleDevSignIn(email);
+      } else {
+        setError(`회원가입 실패: ${error.message} (status: ${error.status})`);
+      }
+      return;
+    }
+    // signUp이 세션을 바로 반환하면 로그인 불필요
+    if (data?.session) {
+      setDevMsg(`${email} 가입+로그인 완료!`);
+      navigate('/');
+      return;
+    }
+    setDevMsg(`${email} 가입 완료! 로그인 시도...`);
+    await handleDevSignIn(email);
+  };
+
+  const handleDevSignIn = async (email) => {
+    setError('');
+    const { error } = await signInWithEmail(email, DEV_PASSWORD);
+    if (error) {
+      setError(`로그인 실패: ${error.message}`);
+      return;
+    }
+    setDevMsg('');
+    navigate('/');
   };
 
   return (
@@ -61,12 +106,31 @@ function LoginPage() {
 
         {import.meta.env.DEV && (
           <div className="mt-6 pt-6 border-t border-dashed border-gray-200">
-            <p className="text-xs text-center text-orange-400 mb-3">개발 모드</p>
+            <p className="text-xs text-center text-orange-400 mb-3 font-bold">개발 모드 — 테스트 계정</p>
+            {devMsg && <p className="text-xs text-center text-blue-500 mb-3">{devMsg}</p>}
+            <div className="space-y-2">
+              {TEST_USERS.map((u) => (
+                <div key={u.email} className="flex gap-2">
+                  <button
+                    onClick={() => handleDevSignUp(u.email)}
+                    className="flex-1 p-2 rounded-lg bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-all border border-green-200"
+                  >
+                    가입: {u.label}
+                  </button>
+                  <button
+                    onClick={() => handleDevSignIn(u.email)}
+                    className="flex-1 p-2 rounded-lg bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-all border border-orange-200"
+                  >
+                    로그인: {u.label}
+                  </button>
+                </div>
+              ))}
+            </div>
             <button
               onClick={handleDevLogin}
-              className="w-full p-3 rounded-lg bg-orange-100 text-orange-700 text-sm font-semibold hover:bg-orange-200 transition-all duration-200"
+              className="w-full mt-3 p-2 rounded-lg bg-gray-100 text-gray-500 text-xs hover:bg-gray-200 transition-all"
             >
-              로그인 없이 둘러보기 (Dev)
+              로그인 없이 둘러보기 (UI만)
             </button>
           </div>
         )}

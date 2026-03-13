@@ -156,7 +156,7 @@ export function galeShapley(malePrefs, femalePrefs) {
 /**
  * Create a chat room for a matched couple + admin.
  */
-async function createChatRoom(eventId, match, coupleNumber) {
+export async function createChatRoom(eventId, match, coupleNumber) {
   // 1. Create room
   const { data: room, error: roomError } = await supabase
     .from('chat_rooms')
@@ -169,16 +169,21 @@ async function createChatRoom(eventId, match, coupleNumber) {
     .select()
     .single();
 
-  if (roomError || !room) return;
+  if (roomError || !room) {
+    console.error('채팅방 생성 실패:', roomError?.message);
+    return;
+  }
 
   // 2. Add participants (male, female, admin)
+  const adminUserId = (await supabase.auth.getUser()).data?.user?.id;
   const participants = [
     { room_id: room.id, user_id: match.male_user_id, role: 'member' },
     { room_id: room.id, user_id: match.female_user_id, role: 'member' },
   ];
+  if (adminUserId) {
+    participants.push({ room_id: room.id, user_id: adminUserId, role: 'admin' });
+  }
 
-  // Find admin users (we add the first admin from applications or matching_events creator)
-  // For now, we'll add admin participant when admin opens the chat dashboard
   await supabase.from('chat_participants').insert(participants);
 
   // 3. Send system welcome message
@@ -277,14 +282,6 @@ export async function runMatching(eventId) {
       .select();
 
     if (insertError) throw new Error('매칭 결과 저장 실패: ' + insertError.message);
-
-    // 5b. Create chat rooms for each match
-    if (insertedMatches) {
-      for (let i = 0; i < insertedMatches.length; i++) {
-        const match = insertedMatches[i];
-        await createChatRoom(eventId, match, i + 1);
-      }
-    }
   }
 
   // 6. Update event status to completed

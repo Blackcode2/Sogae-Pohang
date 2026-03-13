@@ -1,20 +1,9 @@
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { EVENT_TYPE_LABELS } from "../lib/constants";
+import { supabase } from "../lib/supabase";
+import { EVENT_TYPE_LABELS, ADMIN_EMAILS } from "../lib/constants";
 import HeroImage from "../assets/images/landing-photo.png";
-
-// Mock data — will be replaced with Supabase queries later
-const MOCK_EVENT = {
-  isOpen: true,
-  title: "2026 봄 블라인드 소개팅",
-  event_type: "blind_online",
-  startDate: "2026-02-15",
-  endDate: "2026-02-28",
-  maxMale: 10,
-  maxFemale: 10,
-  currentMale: 3,
-  currentFemale: 5,
-};
 
 const UNIVERSITIES = [
   { name: "POSTECH", domain: "postech.ac.kr", color: "#C8102E" },
@@ -24,6 +13,56 @@ const UNIVERSITIES = [
 function LandingPage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchEvents() {
+      const { data } = await supabase
+        .from('matching_events')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      // Auto-close expired open events
+      const today = new Date().toISOString().split('T')[0];
+      const updated = [];
+      for (const evt of (data || [])) {
+        if (evt.status === 'open' && evt.end_date && evt.end_date < today) {
+          await supabase
+            .from('matching_events')
+            .update({ status: 'closed' })
+            .eq('id', evt.id);
+          updated.push({ ...evt, status: 'closed' });
+        } else {
+          updated.push(evt);
+        }
+      }
+      // For selection mode events, fetch applicant counts by gender
+      const enriched = await Promise.all(updated.map(async (evt) => {
+        if (evt.application_mode === 'selection' && evt.status === 'open') {
+          const { data: apps } = await supabase
+            .from('applications')
+            .select('user_id')
+            .eq('event_id', evt.id);
+          const userIds = (apps || []).map(a => a.user_id);
+          let maleCount = 0, femaleCount = 0;
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('user_id, gender')
+              .in('user_id', userIds);
+            maleCount = (profiles || []).filter(p => p.gender === '남자').length;
+            femaleCount = (profiles || []).filter(p => p.gender === '여자').length;
+          }
+          return { ...evt, applicant_male: maleCount, applicant_female: femaleCount };
+        }
+        return evt;
+      }));
+      setEvents(enriched);
+      setLoading(false);
+    }
+    fetchEvents();
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -37,7 +76,8 @@ function LandingPage() {
     }
   };
 
-  const event = MOCK_EVENT;
+  // Show the most recent open event, or the most recent event
+  const openEvent = events.find((e) => e.status === 'open');
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 text-gray-800">
@@ -50,6 +90,14 @@ function LandingPage() {
           <div className="flex items-center space-x-4">
             {user ? (
               <>
+                {ADMIN_EMAILS.includes(user.email) && (
+                  <Link
+                    to="/admin"
+                    className="text-gray-600 hover:text-primary transition-colors duration-300 font-medium"
+                  >
+                    관리자
+                  </Link>
+                )}
                 <Link
                   to="/profile"
                   className="text-gray-600 hover:text-primary transition-colors duration-300 font-medium"
@@ -129,7 +177,9 @@ function LandingPage() {
             현재 소개팅 현황
           </h2>
 
-          {event.isOpen ? (
+          {loading ? (
+            <p className="text-center text-gray-400">로딩 중...</p>
+          ) : openEvent ? (
             <div className="max-w-2xl mx-auto">
               {/* Period */}
               <div className="text-center mb-8">
@@ -137,58 +187,80 @@ function LandingPage() {
                   모집 중
                 </span>
                 <span className="inline-block bg-purple-100 text-purple-700 text-sm font-semibold px-4 py-1 rounded-full mb-2 ml-2">
-                  {EVENT_TYPE_LABELS[event.event_type] || event.event_type}
+                  {EVENT_TYPE_LABELS[openEvent.event_type] || openEvent.event_type}
                 </span>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h3>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{openEvent.title}</h3>
                 <p className="text-gray-600">
                   참여 기간:{" "}
                   <span className="font-semibold text-gray-800">
-                    {event.startDate}
+                    {openEvent.start_date}
                   </span>{" "}
                   ~{" "}
                   <span className="font-semibold text-gray-800">
-                    {event.endDate}
+                    {openEvent.end_date}
                   </span>
                 </p>
               </div>
 
               {/* Participant Counts */}
-              <div className="grid grid-cols-2 gap-6 mb-8">
-                <div className="bg-blue-50 rounded-xl p-6 text-center">
-                  <p className="text-sm text-blue-600 font-medium mb-1">남자</p>
-                  <p className="text-3xl font-bold text-blue-700">
-                    {event.currentMale}
-                    <span className="text-lg text-blue-400">
-                      /{event.maxMale}
-                    </span>
+              {openEvent.application_mode === 'selection' ? (
+                <div className="mb-8">
+                  <div className="grid grid-cols-2 gap-6 mb-4">
+                    <div className="bg-blue-50 rounded-xl p-6 text-center">
+                      <p className="text-sm text-blue-600 font-medium mb-1">남자 모집</p>
+                      <p className="text-3xl font-bold text-blue-700">
+                        {openEvent.max_male}<span className="text-lg text-blue-400">명</span>
+                      </p>
+                    </div>
+                    <div className="bg-pink-50 rounded-xl p-6 text-center">
+                      <p className="text-sm text-pink-600 font-medium mb-1">여자 모집</p>
+                      <p className="text-3xl font-bold text-pink-700">
+                        {openEvent.max_female}<span className="text-lg text-pink-400">명</span>
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-center text-gray-600">
+                    현재 지원자: 남자 <span className="font-bold text-blue-700">{openEvent.applicant_male ?? 0}</span>명 · 여자 <span className="font-bold text-pink-700">{openEvent.applicant_female ?? 0}</span>명
                   </p>
-                  <div className="mt-3 w-full bg-blue-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                      style={{
-                        width: `${(event.currentMale / event.maxMale) * 100}%`,
-                      }}
-                    ></div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-6 mb-8">
+                  <div className="bg-blue-50 rounded-xl p-6 text-center">
+                    <p className="text-sm text-blue-600 font-medium mb-1">남자</p>
+                    <p className="text-3xl font-bold text-blue-700">
+                      {openEvent.current_male}
+                      <span className="text-lg text-blue-400">
+                        /{openEvent.max_male}
+                      </span>
+                    </p>
+                    <div className="mt-3 w-full bg-blue-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                        style={{
+                          width: `${(openEvent.current_male / openEvent.max_male) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                  <div className="bg-pink-50 rounded-xl p-6 text-center">
+                    <p className="text-sm text-pink-600 font-medium mb-1">여자</p>
+                    <p className="text-3xl font-bold text-pink-700">
+                      {openEvent.current_female}
+                      <span className="text-lg text-pink-400">
+                        /{openEvent.max_female}
+                      </span>
+                    </p>
+                    <div className="mt-3 w-full bg-pink-200 rounded-full h-2">
+                      <div
+                        className="bg-pink-500 h-2 rounded-full transition-all duration-500"
+                        style={{
+                          width: `${(openEvent.current_female / openEvent.max_female) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
-                <div className="bg-pink-50 rounded-xl p-6 text-center">
-                  <p className="text-sm text-pink-600 font-medium mb-1">여자</p>
-                  <p className="text-3xl font-bold text-pink-700">
-                    {event.currentFemale}
-                    <span className="text-lg text-pink-400">
-                      /{event.maxFemale}
-                    </span>
-                  </p>
-                  <div className="mt-3 w-full bg-pink-200 rounded-full h-2">
-                    <div
-                      className="bg-pink-500 h-2 rounded-full transition-all duration-500"
-                      style={{
-                        width: `${(event.currentFemale / event.maxFemale) * 100}%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
+              )}
 
               <div className="text-center">
                 <button

@@ -102,7 +102,8 @@ Full SQL: [`docs/plans/supabase-schema.sql`](plans/supabase-schema.sql)
 | male_domains | TEXT[] | No | 남자 허용 도메인 (allow_all=true면 빈 배열) |
 | female_domains | TEXT[] | No | 여자 허용 도메인 |
 | allow_all_domains | BOOLEAN | No | Default: true |
-| status | TEXT | No | open / closed / completed |
+| application_mode | TEXT | No | first_come / selection (default: first_come) |
+| status | TEXT | No | open / closed / completed / ended |
 | created_at | TIMESTAMPTZ | No | Auto |
 
 ### applications
@@ -160,6 +161,7 @@ Full SQL: [`docs/plans/supabase-schema.sql`](plans/supabase-schema.sql)
 | room_id | UUID | No | References chat_rooms |
 | user_id | UUID | No | References auth.users |
 | role | TEXT | No | member / admin |
+| last_read_at | TIMESTAMPTZ | Yes | 마지막 읽은 시간 (읽지 않은 메시지 계산용) |
 | joined_at | TIMESTAMPTZ | No | Auto |
 
 **Constraint**: `UNIQUE(room_id, user_id)`
@@ -186,8 +188,8 @@ All tables have RLS enabled:
 - **matching_events**: All authenticated users can SELECT
 - **applications**: Users can only SELECT/INSERT their own rows
 - **matches**: Users can SELECT where they are male_user_id or female_user_id
-- **chat_rooms**: Users can SELECT rooms they participate in (via chat_participants)
-- **chat_participants**: Users can SELECT participants of rooms they're in
+- **chat_rooms**: Users can SELECT rooms they participate in (via chat_participants). Admin can UPDATE (열기/닫기)
+- **chat_participants**: Users can SELECT participants of rooms they're in. Users can UPDATE own record (`last_read_at`)
 - **chat_messages**: Users can SELECT/INSERT messages in rooms they participate in
 
 ### Supabase Realtime
@@ -196,9 +198,9 @@ All tables have RLS enabled:
 
 ### Supabase Storage
 
-`blind-photos` bucket (private): 블라인드 소개팅 사진 업로드용.
+`blind-photos` bucket (public): 블라인드 소개팅 사진 업로드용.
 - Authenticated users can upload to their own folder (`{user_id}/{event_id}/`)
-- Admin can read all files
+- Public access for photo display (admin dashboard, event detail page)
 
 ---
 
@@ -244,7 +246,8 @@ ADMIN_EMAILS: ['doky03115@gmail.com']
 | DATING_STYLE_OPTIONS | 직진형, 리드형, 천천히 진행하는 편, 리드가 필요한 편 |
 | CONTACT_METHOD_OPTIONS | 전화번호, 카카오톡 ID, 인스타그램, 기타 |
 | BIRTH_YEAR_MIN / MAX | 1995 / 2007 |
-| EVENT_STATUS_LABELS | { open: '모집 중', closed: '모집 마감', completed: '매칭 완료' } |
+| EVENT_STATUS_LABELS | { open: '모집 중', closed: '모집 마감', completed: '매칭 완료', ended: '종료' } |
+| APPLICATION_MODE_OPTIONS | first_come (선착순), selection (선별) |
 
 ### Event Constants (v2 추가)
 

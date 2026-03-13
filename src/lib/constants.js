@@ -35,7 +35,7 @@ export const DRINKING_OPTIONS = ['안 마심', '월 1-2회', '주 1회', '주 2-
 
 export const TATTOO_OPTIONS = ['없음', '있음'];
 
-export const MILITARY_SERVICE_OPTIONS = ['완료', '아직'];
+export const MILITARY_SERVICE_OPTIONS = ['완료', '미완료'];
 
 export const CONTACT_FREQUENCY_OPTIONS = [
   '1-5분', '5-10분', '10-30분', '1시간', '2시간', '3시간', '5시간 이상', '하루 이상',
@@ -80,6 +80,7 @@ export const EVENT_STATUS_LABELS = {
   open: '모집 중',
   closed: '모집 마감',
   completed: '매칭 완료',
+  ended: '종료',
 };
 
 export const EVENT_TYPES = [
@@ -97,4 +98,13 @@ export const PHOTO_SETTINGS = [
 
 export const EVENT_TYPE_LABELS = Object.fromEntries(
   EVENT_TYPES.map(({ value, label }) => [value, label])
+);
+
+export const APPLICATION_MODES = [
+  { value: 'first_come', label: '선착순 (인원 충족 시 자동 마감)' },
+  { value: 'selection', label: '선별 (지원 기간 후 어드민 선발)' },
+];
+
+export const APPLICATION_MODE_LABELS = Object.fromEntries(
+  APPLICATION_MODES.map(({ value, label }) => [value, label])
 );

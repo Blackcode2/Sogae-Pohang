@@ -34,7 +34,7 @@ Sogae-Pohang/
 │   │   ├── FormFields.jsx          # Reusable form components (9 types)
 │   │   ├── IdealTypeForm.jsx       # Ideal type preferences form (이상형 정보)
 │   │   ├── Logo.jsx                # Logo component with size prop
-│   │   ├── PhotoUpload.jsx         # Photo upload with preview (5MB limit)
+│   │   ├── PhotoUpload.jsx         # Photo upload with preview (10MB limit, auto-resize to 1920px)
 │   │   └── ProtectedRoute.jsx      # Auth-required route guard
 │   ├── context/
 │   │   ├── AuthContext.jsx      # AuthProvider (session, OAuth, devLogin)
@@ -167,7 +167,9 @@ Backend (Supabase)
 ### Event System
 - 어드민이 소개팅 이벤트를 생성 (종류, 기간, 인원, 사진설정, 도메인제한)
 - 이벤트 종류: 블라인드 온라인, 블라인드 오프라인, 로테이션, 기타
-- 상태 전이: open → closed → completed
+- 상태 전이: open → closed → completed → ended
+- 모집 방식: 선착순 (first_come, 인원 충족 시 자동 마감) / 선별 (selection, 어드민 선발)
+- 종료일이 지난 open 이벤트는 프론트에서 자동으로 closed 처리
 
 ### Matching System
 - 가중치 기반 호환성 점수 계산 (`calculateCompatibility`)
@@ -178,6 +180,9 @@ Backend (Supabase)
 - Supabase Realtime 기반 실시간 채팅
 - 매칭된 커플 + 주선자(어드민) 채팅방
 - 메시지 타입: text, system, contact_share
-- 어드민 대시보드: 전체 공지, 개별 채팅, 연락처 교환 기능
-
-Currently using **mock data** for events on LandingPage and MatchApplyPage. Real Supabase integration is ready in the code but requires the schema to be applied.
+- 주선자(admin) 메시지는 앰버 색상으로 구분 표시
+- 읽지 않은 메시지 추적: `chat_participants.last_read_at` 기반
+- @주선자 멘션 감지 및 알림 표시
+- 어드민 대시보드: 소개팅별 채팅 그룹화, 전체 공지, 개별 채팅, 참가자 프로필/사진 표시
+- 채팅방 열기/닫기/다시 열기 기능
+- 소개팅 종료 시 모든 채팅방 자동 종료

@@ -63,12 +63,20 @@ VITE_SUPABASE_ANON_KEY=<supabase-anon-key>
 | `/profile` | ProfilePage | Protected | View basic profile, matches, chat links |
 | `/profile/setup` | ProfileFormPage | Protected | Basic profile form (nickname, gender, birth year, school, dept) |
 | `/apply` | MatchApplyPage | Protected | 6-step blind date application (event → profile → ideal → photo → confirm → done) |
-| `/chat/:roomId` | ChatPage | Protected | Real-time chat room for matched couples |
-| `/admin` | AdminPage | Admin only | Event management + user management + chat dashboard |
+| `/chat/:roomId` | ChatPage | Protected | Real-time chat room for matched couples (admin messages in amber) |
+| `/admin` | AdminPage | Admin only | Event/user/chat management + event detail page |
 
 ### Auth Flow
 
-Google OAuth only. AuthContext manages session via `supabase.auth.onAuthStateChange`. ProtectedRoute redirects to `/login`. AdminRoute checks `ADMIN_EMAILS` array in constants.js. Dev mode has bypass login via `devLogin()`.
+Google OAuth only. AuthContext manages session via `supabase.auth.onAuthStateChange`. ProtectedRoute redirects to `/login`. AdminRoute checks `ADMIN_EMAILS` array in constants.js. Dev mode has bypass login via `devLogin()`. Admin link shown in LandingPage/ProfilePage headers for admin users.
+
+### Event Lifecycle
+
+open → closed → completed → ended. 종료일 지난 open 이벤트는 프론트에서 자동 closed 처리. 선착순 모드는 인원 충족 시 자동 마감. "소개팅 종료" 시 모든 채팅방 종료 + ended 상태.
+
+### Domain Restrictions
+
+이벤트별 성별 도메인 제한. 제한된 도메인 유저에게 이벤트는 보이지만 "참가 불가" 표시 + 클릭 불가. 신청 제출 시 이중 검증.
 
 ## Conventions
 

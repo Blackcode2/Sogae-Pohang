@@ -42,8 +42,25 @@ export function AuthProvider({ children }) {
     });
   };
 
+  const signUpWithEmail = async (email, password) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { dev_test: true } },
+    });
+    return { data, error };
+  };
+
+  const signInWithEmail = async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { data, error };
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut, devLogin }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut, devLogin, signUpWithEmail, signInWithEmail }}>
       {children}
     </AuthContext.Provider>
   );

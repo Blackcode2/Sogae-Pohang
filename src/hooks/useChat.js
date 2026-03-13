@@ -21,12 +21,29 @@ export function useChat(roomId) {
           .order('created_at', { ascending: true }),
         supabase
           .from('chat_participants')
-          .select('*, profile:profiles!chat_participants_user_id_fkey(nickname)')
+          .select('user_id, role')
           .eq('room_id', roomId),
       ]);
 
+      const parts = partResult.data || [];
+      // Fetch profiles separately
+      const userIds = parts.map((p) => p.user_id);
+      let profileMap = {};
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('user_id, nickname')
+          .in('user_id', userIds);
+        (profilesData || []).forEach((p) => { profileMap[p.user_id] = p; });
+      }
+
+      const enriched = parts.map((p) => ({
+        ...p,
+        profile: profileMap[p.user_id] || null,
+      }));
+
       setMessages(msgResult.data || []);
-      setParticipants(partResult.data || []);
+      setParticipants(enriched);
       setLoading(false);
     }
 

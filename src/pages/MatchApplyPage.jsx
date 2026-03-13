@@ -7,23 +7,6 @@ import BlindProfileForm from '../components/BlindProfileForm';
 import IdealTypeForm from '../components/IdealTypeForm';
 import PhotoUpload from '../components/PhotoUpload';
 
-// Mock event data — will be replaced with Supabase query
-const MOCK_EVENTS = [
-  {
-    id: 'mock-event-1',
-    title: '2026 봄 블라인드 소개팅',
-    event_type: 'blind_online',
-    description: '포항 대학생들을 위한 블라인드 소개팅입니다.',
-    photo_setting: 'optional',
-    status: 'open',
-    start_date: '2026-02-15',
-    end_date: '2026-02-28',
-    max_male: 10,
-    max_female: 10,
-    current_male: 3,
-    current_female: 5,
-  },
-];
 
 function InfoRow({ label, value }) {
   return (
@@ -72,7 +55,9 @@ function MatchApplyPage() {
   // Photo
   const [photoFile, setPhotoFile] = useState(null);
 
-  const events = MOCK_EVENTS.filter((e) => e.status === 'open');
+  // Events from DB
+  const [events, setEvents] = useState([]);
+
   const step = STEPS[stepIndex];
 
   // Determine if photo step should show
@@ -81,6 +66,28 @@ function MatchApplyPage() {
 
   useEffect(() => {
     async function fetchData() {
+      // Fetch open events
+      const { data: eventsData } = await supabase
+        .from('matching_events')
+        .select('*')
+        .eq('status', 'open')
+        .order('created_at', { ascending: false });
+
+      // Auto-close expired events
+      const today = new Date().toISOString().split('T')[0];
+      const activeEvents = [];
+      for (const evt of (eventsData || [])) {
+        if (evt.end_date && evt.end_date < today) {
+          await supabase
+            .from('matching_events')
+            .update({ status: 'closed' })
+            .eq('id', evt.id);
+        } else {
+          activeEvents.push(evt);
+        }
+      }
+      // Filter events by user's email domain
+      const userDomain = user.email?.split('@')[1];
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -88,6 +95,37 @@ function MatchApplyPage() {
         .single();
 
       setProfile(profileData);
+
+      const userGender = profileData?.gender;
+      // Mark domain-restricted events instead of filtering them out
+      const markedEvents = activeEvents.map((evt) => {
+        if (evt.allow_all_domains) return { ...evt, domainAllowed: true };
+        const domainList = userGender === '남자' ? evt.male_domains : evt.female_domains;
+        const allowed = domainList && domainList.includes(userDomain);
+        return { ...evt, domainAllowed: !!allowed };
+      });
+      // For selection mode events, fetch applicant counts by gender
+      const enrichedEvents = await Promise.all(markedEvents.map(async (evt) => {
+        if (evt.application_mode === 'selection') {
+          const { data: apps } = await supabase
+            .from('applications')
+            .select('user_id')
+            .eq('event_id', evt.id);
+          const userIds = (apps || []).map(a => a.user_id);
+          let maleCount = 0, femaleCount = 0;
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('user_id, gender')
+              .in('user_id', userIds);
+            maleCount = (profiles || []).filter(p => p.gender === '남자').length;
+            femaleCount = (profiles || []).filter(p => p.gender === '여자').length;
+          }
+          return { ...evt, applicant_male: maleCount, applicant_female: femaleCount };
+        }
+        return evt;
+      }));
+      setEvents(enrichedEvents);
 
       // Try loading existing blind profile
       const { data: blindProfileData } = await supabase
@@ -185,6 +223,17 @@ function MatchApplyPage() {
   const handleSubmit = async () => {
     setError('');
     setApplying(true);
+
+    // Domain restriction check
+    if (!selectedEvent.allow_all_domains) {
+      const userDomain = user.email?.split('@')[1];
+      const domainList = profile.gender === '남자' ? selectedEvent.male_domains : selectedEvent.female_domains;
+      if (!domainList || !domainList.includes(userDomain)) {
+        setError('이 소개팅에 참여할 수 없는 도메인입니다.');
+        setApplying(false);
+        return;
+      }
+    }
 
     const nocare = (v) => (!v || v === '상관없음') ? null : v;
 
@@ -289,6 +338,27 @@ function MatchApplyPage() {
       return;
     }
 
+    // Update participant count
+    const genderField = profile.gender === '남자' ? 'current_male' : 'current_female';
+    const newCount = selectedEvent[genderField] + 1;
+    const updatePayload = { [genderField]: newCount };
+
+    // Auto-close for first_come mode when both genders are full
+    if (selectedEvent.application_mode === 'first_come') {
+      const otherFull = profile.gender === '남자'
+        ? selectedEvent.current_female >= selectedEvent.max_female
+        : selectedEvent.current_male >= selectedEvent.max_male;
+      const thisFull = newCount >= (profile.gender === '남자' ? selectedEvent.max_male : selectedEvent.max_female);
+      if (thisFull && otherFull) {
+        updatePayload.status = 'closed';
+      }
+    }
+
+    await supabase
+      .from('matching_events')
+      .update(updatePayload)
+      .eq('id', selectedEvent.id);
+
     // Move to done step
     setStepIndex(STEPS.indexOf('done'));
     setApplying(false);
@@ -359,13 +429,19 @@ function MatchApplyPage() {
                   <button
                     key={evt.id}
                     type="button"
-                    onClick={() => { setSelectedEvent(evt); goNext(); }}
-                    className={`w-full text-left bg-white rounded-xl shadow-sm p-6 border-2 transition-all hover:border-primary ${
-                      selectedEvent?.id === evt.id ? 'border-primary' : 'border-transparent'
+                    onClick={() => { if (evt.domainAllowed) { setSelectedEvent(evt); goNext(); } }}
+                    disabled={!evt.domainAllowed}
+                    className={`w-full text-left rounded-xl shadow-sm p-6 border-2 transition-all ${
+                      !evt.domainAllowed ? 'bg-gray-100 border-transparent cursor-not-allowed opacity-70' :
+                      selectedEvent?.id === evt.id ? 'bg-white border-primary' : 'bg-white border-transparent hover:border-primary'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full">모집 중</span>
+                      {!evt.domainAllowed ? (
+                        <span className="bg-red-100 text-red-600 text-xs font-semibold px-2 py-1 rounded-full">참가 불가</span>
+                      ) : (
+                        <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full">모집 중</span>
+                      )}
                       <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
                         evt.event_type === 'blind_online' ? 'bg-purple-100 text-purple-700' :
                         evt.event_type === 'blind_offline' ? 'bg-orange-100 text-orange-700' :
@@ -377,11 +453,25 @@ function MatchApplyPage() {
                     <h3 className="text-base font-bold text-gray-800 mb-1">{evt.title}</h3>
                     <p className="text-sm text-gray-500 mb-2">{evt.start_date} ~ {evt.end_date}</p>
                     <div className="flex gap-4 text-sm text-gray-600">
-                      <span>남자 {evt.current_male}/{evt.max_male}</span>
-                      <span>여자 {evt.current_female}/{evt.max_female}</span>
+                      {evt.application_mode === 'selection' ? (
+                        <>
+                          <span>남자 {evt.max_male}명 모집</span>
+                          <span>여자 {evt.max_female}명 모집</span>
+                          <span>·</span>
+                          <span>지원자: 남 {evt.applicant_male ?? 0} · 여 {evt.applicant_female ?? 0}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>남자 {evt.current_male}/{evt.max_male}</span>
+                          <span>여자 {evt.current_female}/{evt.max_female}</span>
+                        </>
+                      )}
                     </div>
                     {evt.description && (
                       <p className="text-xs text-gray-400 mt-2">{evt.description}</p>
+                    )}
+                    {!evt.domainAllowed && (
+                      <p className="text-xs text-red-500 mt-2">소속 대학교가 참가 대상에 포함되지 않습니다.</p>
                     )}
                   </button>
                 ))}
@@ -481,7 +571,6 @@ function MatchApplyPage() {
               {profile.gender === '남자' && <InfoRow label="군복무" value={blindData.military_service} />}
               <InfoRow label="관심사" value={blindData.interests?.join(', ')} />
               <InfoRow label="연애 스타일" value={blindData.dating_style} />
-              <InfoRow label="연락 수단" value={blindData.contact_method ? `${blindData.contact_method}: ${blindData.contact_value}` : ''} />
             </div>
 
             {/* Ideal Type Summary */}

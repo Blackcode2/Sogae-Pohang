@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
+import { ADMIN_EMAILS } from '../lib/constants';
 
 function SectionCard({ title, children }) {
   return (
@@ -27,6 +28,7 @@ function ProfilePage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
+  const [applications, setApplications] = useState([]);
   const [matches, setMatches] = useState([]);
   const [chatRooms, setChatRooms] = useState({}); // matchId -> roomId
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,14 @@ function ProfilePage() {
         .single();
 
       setProfile(profileData);
+
+      // Fetch applications with event info
+      const { data: appData } = await supabase
+        .from('applications')
+        .select('*, matching_events(*)')
+        .eq('user_id', user.id)
+        .order('applied_at', { ascending: false });
+      setApplications(appData || []);
 
       // Fetch matches where user is involved
       const { data: matchData } = await supabase
@@ -67,12 +77,12 @@ function ProfilePage() {
         if (matchIds.length > 0) {
           const { data: rooms } = await supabase
             .from('chat_rooms')
-            .select('id, match_id')
+            .select('id, match_id, status')
             .in('match_id', matchIds);
 
           if (rooms) {
             const roomMap = {};
-            rooms.forEach((r) => { roomMap[r.match_id] = r.id; });
+            rooms.forEach((r) => { roomMap[r.match_id] = { id: r.id, status: r.status }; });
             setChatRooms(roomMap);
           }
         }
@@ -126,12 +136,19 @@ function ProfilePage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <Link to="/" className="text-2xl font-bold text-primary">소개퐝</Link>
-          <Link
-            to="/profile/setup"
-            className="text-sm text-primary font-medium hover:underline"
-          >
-            프로필 수정
-          </Link>
+          <div className="flex items-center gap-4">
+            {ADMIN_EMAILS.includes(user.email) && (
+              <Link to="/admin" className="text-sm text-gray-600 font-medium hover:text-primary">
+                관리자
+              </Link>
+            )}
+            <Link
+              to="/profile/setup"
+              className="text-sm text-primary font-medium hover:underline"
+            >
+              프로필 수정
+            </Link>
+          </div>
         </div>
 
         <h2 className="text-xl font-bold text-gray-900 mb-6">내 프로필</h2>
@@ -145,11 +162,41 @@ function ProfilePage() {
           <InfoRow label="학과/학부" value={profile.department} />
         </SectionCard>
 
-        {/* Participated Events — placeholder for Phase 3 */}
+        {/* Participated Events */}
         <SectionCard title="참여한 소개팅">
-          <div className="text-center py-4">
-            <p className="text-gray-400 text-sm">아직 참여한 소개팅이 없습니다.</p>
-          </div>
+          {applications.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-gray-400 text-sm">아직 참여한 소개팅이 없습니다.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {applications.map((app) => {
+                const evt = app.matching_events;
+                return (
+                  <div key={app.id} className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        evt?.status === 'open' ? 'bg-green-100 text-green-700' :
+                        evt?.status === 'closed' ? 'bg-yellow-100 text-yellow-700' :
+                        evt?.status === 'completed' ? 'bg-purple-100 text-purple-700' :
+                        evt?.status === 'ended' ? 'bg-gray-200 text-gray-500' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {evt?.status === 'open' ? '모집 중' :
+                         evt?.status === 'closed' ? '모집 마감' :
+                         evt?.status === 'completed' ? '매칭 완료' :
+                         evt?.status === 'ended' ? '종료' : evt?.status}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-800">{evt?.title || '알 수 없는 이벤트'}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      신청일: {new Date(app.applied_at).toLocaleDateString('ko-KR')}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </SectionCard>
 
         {/* Matching Status */}
@@ -181,12 +228,18 @@ function ProfilePage() {
                         <p className="text-xs text-gray-500">{m.partner.university} · {m.partner.department}</p>
                       </div>
                       {chatRooms[m.id] && (
-                        <Link
-                          to={`/chat/${chatRooms[m.id]}`}
-                          className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary-dark transition-all"
-                        >
-                          채팅방 가기
-                        </Link>
+                        chatRooms[m.id].status === 'closed' ? (
+                          <span className="text-xs bg-gray-200 text-gray-400 px-3 py-1.5 rounded-lg">
+                            채팅 종료
+                          </span>
+                        ) : (
+                          <Link
+                            to={`/chat/${chatRooms[m.id].id}`}
+                            className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary-dark transition-all"
+                          >
+                            채팅방 가기
+                          </Link>
+                        )
                       )}
                     </div>
                   ) : (
