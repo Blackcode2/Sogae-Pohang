@@ -1,7 +1,8 @@
 import { RadioGroup, CheckboxGroup, SelectInput, RangeInput } from './FormFields';
 import {
   BODY_TYPES, FACE_TYPES, EYE_TYPES, MBTI_TYPES, RELIGION_OPTIONS,
-  SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, CONTACT_FREQUENCY_OPTIONS,
+  SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, MILITARY_SERVICE_OPTIONS,
+  CONTACT_FREQUENCY_OPTIONS,
   INTEREST_OPTIONS, PERSONALITY_OPTIONS, DATE_STYLE_OPTIONS, DATING_STYLE_OPTIONS,
 } from '../lib/constants';
 
@@ -21,7 +22,7 @@ function NocareButton({ active, onClick }) {
   );
 }
 
-function IdealTypeForm({ data, onChange }) {
+function IdealTypeForm({ data, onChange, gender }) {
   const set = (field) => (value) => onChange({ ...data, [field]: value });
 
   return (
@@ -77,6 +78,12 @@ function IdealTypeForm({ data, onChange }) {
         label="선호 타투" name="idealTattoo" value={data.tattoo || ''} onChange={set('tattoo')}
         options={['상관없음', ...TATTOO_OPTIONS]}
       />
+      {gender === '여자' && (
+        <RadioGroup
+          label="선호 군복무" name="idealMilitaryService" value={data.military_service || ''} onChange={set('military_service')}
+          options={['상관없음', ...MILITARY_SERVICE_OPTIONS]}
+        />
+      )}
       <SelectInput
         label="선호 연락 주기" id="idealContactFrequency" value={data.contact_frequency || ''} onChange={set('contact_frequency')}
         options={CONTACT_FREQUENCY_OPTIONS} placeholder="상관없음"

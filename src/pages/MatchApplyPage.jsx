@@ -56,6 +56,7 @@ function MatchApplyPage() {
     mbti: '', religion: '', smoking: '', drinking: '', tattoo: '',
     contact_frequency: '', interests: [], personality: [], date_style: [],
     dating_style: '', contact_method: '', contact_value: '',
+    military_service: '',
   });
 
   // Ideal type data
@@ -65,6 +66,7 @@ function MatchApplyPage() {
     mbti: '', religion: '', smoking: '', drinking: '', tattoo: '',
     contact_frequency: '', interests: [], personality: [], date_style: [],
     dating_style: '',
+    military_service: '',
   });
 
   // Photo
@@ -115,6 +117,7 @@ function MatchApplyPage() {
           dating_style: blindProfileData.dating_style || '',
           contact_method: blindProfileData.contact_method || '',
           contact_value: blindProfileData.contact_value || '',
+          military_service: blindProfileData.military_service || '',
         });
       }
 
@@ -144,6 +147,7 @@ function MatchApplyPage() {
           personality: idealPrefData.personality || [],
           date_style: idealPrefData.date_style || [],
           dating_style: idealPrefData.dating_style || '',
+          military_service: idealPrefData.military_service || '',
         });
       }
 
@@ -205,6 +209,7 @@ function MatchApplyPage() {
       dating_style: blindData.dating_style,
       contact_method: blindData.contact_method,
       contact_value: blindData.contact_value,
+      military_service: blindData.military_service || null,
     };
 
     const { error: blindError } = await supabase
@@ -236,6 +241,7 @@ function MatchApplyPage() {
       personality: idealData.personality,
       date_style: idealData.date_style,
       dating_style: nocare(idealData.dating_style),
+      military_service: nocare(idealData.military_service),
     };
 
     const { error: idealError } = await supabase
@@ -387,7 +393,7 @@ function MatchApplyPage() {
         {/* Step 2: Blind Profile */}
         {step === 'blind' && (
           <div className="bg-white p-6 rounded-xl shadow-lg">
-            <BlindProfileForm data={blindData} onChange={setBlindData} />
+            <BlindProfileForm data={blindData} onChange={setBlindData} gender={profile.gender} />
             {error && <p className="mt-4 text-center text-red-500 text-sm">{error}</p>}
             <div className="flex justify-between mt-8">
               <button type="button" onClick={goBack}
@@ -405,7 +411,7 @@ function MatchApplyPage() {
         {/* Step 3: Ideal Type */}
         {step === 'ideal' && (
           <div className="bg-white p-6 rounded-xl shadow-lg">
-            <IdealTypeForm data={idealData} onChange={setIdealData} />
+            <IdealTypeForm data={idealData} onChange={setIdealData} gender={profile.gender} />
             {error && <p className="mt-4 text-center text-red-500 text-sm">{error}</p>}
             <div className="flex justify-between mt-8">
               <button type="button" onClick={goBack}
@@ -472,6 +478,7 @@ function MatchApplyPage() {
               <InfoRow label="종교" value={blindData.religion} />
               <InfoRow label="담배" value={blindData.smoking} />
               <InfoRow label="음주" value={blindData.drinking} />
+              {profile.gender === '남자' && <InfoRow label="군복무" value={blindData.military_service} />}
               <InfoRow label="관심사" value={blindData.interests?.join(', ')} />
               <InfoRow label="연애 스타일" value={blindData.dating_style} />
               <InfoRow label="연락 수단" value={blindData.contact_method ? `${blindData.contact_method}: ${blindData.contact_value}` : ''} />
@@ -489,6 +496,7 @@ function MatchApplyPage() {
               <InfoRow label="얼굴상" value={idealData.face_type} />
               <InfoRow label="MBTI" value={idealData.mbti} />
               <InfoRow label="종교" value={idealData.religion} />
+              {profile.gender === '여자' && <InfoRow label="군복무" value={idealData.military_service} />}
               <InfoRow label="관심사" value={idealData.interests?.join(', ')} />
               <InfoRow label="연애 스타일" value={idealData.dating_style} />
             </div>

@@ -35,6 +35,8 @@ export const DRINKING_OPTIONS = ['안 마심', '월 1-2회', '주 1회', '주 2-
 
 export const TATTOO_OPTIONS = ['없음', '있음'];
 
+export const MILITARY_SERVICE_OPTIONS = ['완료', '아직'];
+
 export const CONTACT_FREQUENCY_OPTIONS = [
   '1-5분', '5-10분', '10-30분', '1시간', '2시간', '3시간', '5시간 이상', '하루 이상',
 ];

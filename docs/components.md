@@ -208,10 +208,11 @@ Controlled form for blind date detailed profile. Used in MatchApplyPage step 2.
 |------|------|-------------|
 | data | object | Current form data (all blind profile fields) |
 | onChange | function | Called with updated data object |
+| gender | string | 사용자 성별 ('남자' / '여자'). 남자일 때 군복무 필드 표시 |
 
 **Sections**:
 1. 외형 정보: 키 (ToggleField), 체형, 얼굴상, 눈 (RadioGroup)
-2. 라이프스타일: MBTI, 종교, 담배, 음주, 타투, 연락주기, 관심사
+2. 라이프스타일: MBTI, 종교, 담배, 음주, 타투, 군복무 (남자만), 연락주기, 관심사
 3. 성향 & 스타일: 나의 성향 (CheckboxGroup), 데이트 스타일 (CheckboxGroup), 연애 스타일 (RadioGroup)
 4. 연락 수단: 연락 방법 (RadioGroup), 연락처 (TextInput, 조건부 표시)
 
@@ -227,11 +228,13 @@ Controlled form for ideal type preferences. Used in MatchApplyPage step 3.
 |------|------|-------------|
 | data | object | Current ideal type data |
 | onChange | function | Called with updated data object |
+| gender | string | 사용자 성별 ('남자' / '여자'). 여자일 때 선호 군복무 필드 표시 |
 
 **Features**:
 - 모든 필드에 "상관없음" 옵션 (RadioGroup: 첫 옵션, CheckboxGroup/RangeInput: 별도 버튼)
 - 키: RangeInput (min/max) + "상관없음" 클리어 버튼
 - NocareButton 내부 컴포넌트로 상관없음 활성 상태 표시
+- 여자일 때 "선호 군복무" 필드 표시 (상관없음/완료/아직)
 
 ---
 

@@ -39,6 +39,7 @@ Full SQL: [`docs/plans/supabase-schema.sql`](plans/supabase-schema.sql)
 | smoking | TEXT | No | 비흡연 / 흡연 / 가끔 |
 | drinking | TEXT | No | 5 levels |
 | tattoo | TEXT | No | 없음 / 있음 |
+| military_service | TEXT | Yes | 완료 / 아직 (남자만 입력, 여자는 null) |
 | contact_frequency | TEXT | No | 8 levels (1-5분 ~ 하루 이상) |
 | interests | TEXT[] | No | Multi-select from 9 options |
 | personality | TEXT[] | No | Multi-select from 8 options |
@@ -70,6 +71,7 @@ Full SQL: [`docs/plans/supabase-schema.sql`](plans/supabase-schema.sql)
 | smoking | TEXT | Yes | Preferred smoking status |
 | drinking | TEXT | Yes | Preferred drinking level |
 | tattoo | TEXT | Yes | Preferred tattoo status |
+| military_service | TEXT | Yes | Preferred military service (여자만 선택, 완료/아직/null=상관없음) |
 | contact_frequency | TEXT | Yes | Preferred contact frequency |
 | interests | TEXT[] | No | Preferred interests (empty = no preference) |
 | personality | TEXT[] | No | Preferred personality traits |
@@ -234,6 +236,7 @@ ADMIN_EMAILS: ['doky03115@gmail.com']
 | SMOKING_OPTIONS | 비흡연, 흡연, 가끔 |
 | DRINKING_OPTIONS | 안 마심, 월 1-2회, 주 1회, 주 2-3회, 거의 매일 |
 | TATTOO_OPTIONS | 없음, 있음 |
+| MILITARY_SERVICE_OPTIONS | 완료, 아직 |
 | CONTACT_FREQUENCY_OPTIONS | 1-5분, 5-10분, 10-30분, 1시간, 2시간, 3시간, 5시간 이상, 하루 이상 |
 | PERSONALITY_OPTIONS | 8 personality traits (대화가 잘 통하는 사람, etc.) |
 | DATE_STYLE_OPTIONS | 6 date style descriptions |

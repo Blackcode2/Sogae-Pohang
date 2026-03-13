@@ -3,12 +3,13 @@ import {
 } from './FormFields';
 import {
   BODY_TYPES, FACE_TYPES, EYE_TYPES, MBTI_TYPES, RELIGION_OPTIONS,
-  SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, CONTACT_FREQUENCY_OPTIONS,
+  SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, MILITARY_SERVICE_OPTIONS,
+  CONTACT_FREQUENCY_OPTIONS,
   INTEREST_OPTIONS, PERSONALITY_OPTIONS, DATE_STYLE_OPTIONS, DATING_STYLE_OPTIONS,
   CONTACT_METHOD_OPTIONS,
 } from '../lib/constants';
 
-function BlindProfileForm({ data, onChange }) {
+function BlindProfileForm({ data, onChange, gender }) {
   const set = (field) => (value) => onChange({ ...data, [field]: value });
 
   return (
@@ -55,6 +56,12 @@ function BlindProfileForm({ data, onChange }) {
         label="타투" name="tattoo" value={data.tattoo || ''} onChange={set('tattoo')}
         options={TATTOO_OPTIONS} required
       />
+      {gender === '남자' && (
+        <RadioGroup
+          label="군복무" name="militaryService" value={data.military_service || ''} onChange={set('military_service')}
+          options={MILITARY_SERVICE_OPTIONS} required
+        />
+      )}
       <SelectInput
         label="연락 주기" id="contactFrequency" value={data.contact_frequency || ''} onChange={set('contact_frequency')}
         options={CONTACT_FREQUENCY_OPTIONS} required
