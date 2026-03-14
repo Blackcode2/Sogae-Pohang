@@ -4,6 +4,7 @@ import {
   SMOKING_OPTIONS, DRINKING_OPTIONS, TATTOO_OPTIONS, MILITARY_SERVICE_OPTIONS,
   CONTACT_FREQUENCY_OPTIONS,
   INTEREST_OPTIONS, PERSONALITY_OPTIONS, DATE_STYLE_OPTIONS, DATING_STYLE_OPTIONS,
+  BIRTH_YEAR_MIN, BIRTH_YEAR_MAX,
 } from '../lib/constants';
 
 function NocareButton({ active, onClick }) {
@@ -31,6 +32,30 @@ function IdealTypeForm({ data, onChange, gender }) {
       <p className="text-sm text-gray-500">
         원하는 상대의 조건을 선택해주세요. 선택하지 않으면 &quot;상관없음&quot;으로 처리됩니다.
       </p>
+
+      {/* Age Range Slider (만나이, stored as birth year) */}
+      <div>
+        {(() => {
+          const currentYear = new Date().getFullYear();
+          const ageMin = currentYear - BIRTH_YEAR_MAX; // youngest age
+          const ageMax = currentYear - BIRTH_YEAR_MIN; // oldest age
+          const currentAgeMin = data.age_max ? currentYear - data.age_max : ageMin;
+          const currentAgeMax = data.age_min ? currentYear - data.age_min : ageMax;
+          return (
+            <RangeSlider
+              label="희망 나이 (만)"
+              minValue={currentAgeMin} maxValue={currentAgeMax}
+              onMinChange={(val) => onChange({ ...data, age_max: currentYear - val })}
+              onMaxChange={(val) => onChange({ ...data, age_min: currentYear - val })}
+              unit="세" min={ageMin} max={ageMax} step={1}
+            />
+          );
+        })()}
+        <NocareButton
+          active={!data.age_min && !data.age_max}
+          onClick={() => onChange({ ...data, age_min: '', age_max: '' })}
+        />
+      </div>
 
       {/* Height Range Slider */}
       <div>

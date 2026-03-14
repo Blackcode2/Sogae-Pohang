@@ -23,7 +23,7 @@ function AdminPage() {
   const [editingEvent, setEditingEvent] = useState(null); // event object being edited
   const [selectedEventId, setSelectedEventId] = useState(null); // event detail view
   const [applicants, setApplicants] = useState([]); // applicants for selected event
-  const [photoModal, setPhotoModal] = useState(null); // photo URL for fullscreen modal
+  const [selectedApplicant, setSelectedApplicant] = useState(null); // applicant detail modal
 
   // New event form
   const [showNewEvent, setShowNewEvent] = useState(false);
@@ -143,17 +143,89 @@ function AdminPage() {
     fetchData();
   }
 
+  async function handleDeleteEvent(eventId) {
+    if (!window.confirm('이 소개팅을 삭제하시겠습니까? 모든 지원, 매칭, 채팅 데이터가 삭제됩니다.')) return;
+
+    // Delete in dependency order
+    // 1. Chat messages & participants (via chat_rooms)
+    const { data: rooms } = await supabase.from('chat_rooms').select('id').eq('event_id', eventId);
+    if (rooms && rooms.length > 0) {
+      const roomIds = rooms.map((r) => r.id);
+      await supabase.from('chat_messages').delete().in('room_id', roomIds);
+      await supabase.from('chat_participants').delete().in('room_id', roomIds);
+      await supabase.from('chat_rooms').delete().eq('event_id', eventId);
+    }
+    // 2. Matches
+    await supabase.from('matches').delete().eq('event_id', eventId);
+    // 3. Applications
+    await supabase.from('applications').delete().eq('event_id', eventId);
+    // 4. Blind profiles & ideal preferences for this event
+    await supabase.from('blind_profiles').delete().eq('event_id', eventId);
+    await supabase.from('ideal_preferences').delete().eq('event_id', eventId);
+    // 5. Event itself
+    const { error } = await supabase.from('matching_events').delete().eq('id', eventId);
+
+    if (error) {
+      setError('소개팅 삭제 실패: ' + error.message);
+      return;
+    }
+
+    setMessage('소개팅이 삭제되었습니다.');
+    setSelectedEventId(null);
+    setApplicants([]);
+    fetchData();
+  }
+
   async function handleRunMatching(eventId) {
-    if (!window.confirm('매칭을 실행하시겠습니까? 실행 후 이벤트가 매칭 완료 상태로 변경됩니다.')) return;
+    // Fetch current participant counts
+    const evt = events.find((e) => e.id === eventId);
+    const isSelection = evt?.application_mode === 'selection';
+    const statusFilter = isSelection ? 'approved' : undefined;
+
+    let query = supabase
+      .from('applications')
+      .select('user_id')
+      .eq('event_id', eventId);
+    if (statusFilter) query = query.eq('status', statusFilter);
+    const { data: appData } = await query;
+
+    if (!appData || appData.length === 0) {
+      alert('참가자가 없어 매칭을 실행할 수 없습니다.');
+      return;
+    }
+
+    // Get gender counts from profiles
+    const userIds = appData.map((a) => a.user_id);
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('user_id, gender')
+      .in('user_id', userIds);
+
+    const maleCount = (profilesData || []).filter((p) => p.gender === '남자').length;
+    const femaleCount = (profilesData || []).filter((p) => p.gender === '여자').length;
+
+    const statusLabel = isSelection ? '승인된' : '참가';
+    const confirmMsg = `현재 ${statusLabel} 인원:\n남자 ${maleCount}명 / 여자 ${femaleCount}명\n\n매칭을 실행하시겠습니까?\n실행 후 이벤트가 매칭 완료 상태로 변경됩니다.`;
+    if (!window.confirm(confirmMsg)) return;
 
     setMatchingInProgress(eventId);
     setError('');
 
     try {
+      // Auto-reject pending applicants for selection mode
+      if (isSelection) {
+        await supabase
+          .from('applications')
+          .update({ status: 'rejected' })
+          .eq('event_id', eventId)
+          .eq('status', 'pending');
+      }
+
       const results = await runMatching(eventId);
       setMessage(`매칭 완료! ${results.length}쌍이 매칭되었습니다.`);
       fetchData();
       await fetchMatchResults(eventId);
+      if (selectedEventId === eventId) await openEventDetail(eventId);
     } catch (err) {
       setError('매칭 실패: ' + err.message);
     } finally {
@@ -375,7 +447,7 @@ function AdminPage() {
     // Fetch applications with profile info
     const { data: appData } = await supabase
       .from('applications')
-      .select('user_id, applied_at, profile_snapshot, preferences_snapshot, photo_url')
+      .select('id, user_id, applied_at, profile_snapshot, preferences_snapshot, photo_url, status')
       .eq('event_id', eventId)
       .order('applied_at', { ascending: true });
 
@@ -388,8 +460,16 @@ function AdminPage() {
 
       const { data: blindData } = await supabase
         .from('blind_profiles')
-        .select('user_id, height, body_type, face_type, mbti, smoking, drinking, personality, interests, military_service, photo_url')
+        .select('user_id, height, height_public, body_type, face_type, eye_type, mbti, religion, smoking, drinking, tattoo, contact_frequency, personality, interests, date_style, dating_style, military_service, contact_method, contact_value, photo_url')
         .in('user_id', userIds);
+
+      // Fetch ideal preferences
+      const { data: idealData } = await supabase
+        .from('ideal_preferences')
+        .select('*')
+        .in('user_id', userIds);
+      const idealMap = {};
+      (idealData || []).forEach((p) => { idealMap[p.user_id] = p; });
 
       const profileMap = {};
       (profilesData || []).forEach((p) => { profileMap[p.user_id] = p; });
@@ -400,12 +480,81 @@ function AdminPage() {
         ...a,
         profile: profileMap[a.user_id] || null,
         blind: blindMap[a.user_id] || null,
+        ideal: idealMap[a.user_id] || null,
       }));
       setApplicants(enriched);
     }
 
     // Also fetch match results if completed
     await fetchMatchResults(eventId);
+  }
+
+  async function handleApplicantStatus(applicationId, newStatus) {
+    // Validate capacity when approving
+    if (newStatus === 'approved') {
+      const app = applicants.find((a) => a.id === applicationId);
+      const evt = events.find((e) => e.id === selectedEventId);
+      if (app && evt) {
+        const gender = app.profile?.gender;
+        const approvedCount = applicants.filter((a) => a.status === 'approved' && a.profile?.gender === gender).length;
+        const max = gender === '남자' ? evt.max_male : evt.max_female;
+        if (approvedCount >= max) {
+          setError(`${gender} 정원(${max}명)이 이미 찼습니다.`);
+          return;
+        }
+      }
+    }
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: newStatus })
+      .eq('id', applicationId);
+    if (error) {
+      setError('상태 변경 실패: ' + error.message);
+      return;
+    }
+    setError('');
+    setApplicants((prev) => prev.map((a) => a.id === applicationId ? { ...a, status: newStatus } : a));
+  }
+
+  async function handleBulkApprove() {
+    const evt = events.find((e) => e.id === selectedEventId);
+    if (!evt) return;
+
+    const currentApprovedMale = applicants.filter((a) => a.status === 'approved' && a.profile?.gender === '남자').length;
+    const currentApprovedFemale = applicants.filter((a) => a.status === 'approved' && a.profile?.gender === '여자').length;
+    const pendingMale = applicants.filter((a) => a.status === 'pending' && a.profile?.gender === '남자');
+    const pendingFemale = applicants.filter((a) => a.status === 'pending' && a.profile?.gender === '여자');
+
+    const maleSlots = evt.max_male - currentApprovedMale;
+    const femaleSlots = evt.max_female - currentApprovedFemale;
+
+    const toApprove = [
+      ...pendingMale.slice(0, maleSlots),
+      ...pendingFemale.slice(0, femaleSlots),
+    ];
+
+    if (toApprove.length === 0) {
+      setError('정원이 이미 찼습니다.');
+      return;
+    }
+
+    const approveIds = toApprove.map((a) => a.id);
+    const skipped = (pendingMale.length - Math.min(pendingMale.length, maleSlots))
+      + (pendingFemale.length - Math.min(pendingFemale.length, femaleSlots));
+
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: 'approved' })
+      .in('id', approveIds);
+    if (error) {
+      setError('일괄 승인 실패: ' + error.message);
+      return;
+    }
+    const approveSet = new Set(approveIds);
+    setApplicants((prev) => prev.map((a) => approveSet.has(a.id) ? { ...a, status: 'approved' } : a));
+    if (skipped > 0) {
+      setMessage(`${toApprove.length}명 승인 완료. 정원 초과로 ${skipped}명은 승인되지 않았습니다.`);
+    }
   }
 
   function toggleEditDomain(field, domain) {
@@ -571,6 +720,39 @@ function AdminPage() {
                         </div>
                       </div>
                       <div className="mb-4">
+                        <label className="block text-xs text-gray-500 mb-2">도메인 제한</label>
+                        <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                          <input type="checkbox" checked={editingEvent.allow_all_domains}
+                            onChange={(e) => setEditingEvent({ ...editingEvent, allow_all_domains: e.target.checked })}
+                            className="rounded border-gray-300" />
+                          <span className="text-sm text-gray-700">모든 대학교 허용</span>
+                        </label>
+                        {!editingEvent.allow_all_domains && (
+                          <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-2">남자 허용 도메인</p>
+                              {ALLOWED_DOMAINS.map((domain) => (
+                                <label key={`detail-edit-male-${domain}`} className="flex items-center gap-2 mb-1 cursor-pointer">
+                                  <input type="checkbox" checked={editingEvent.male_domains.includes(domain)}
+                                    onChange={() => toggleEditDomain('male_domains', domain)} className="rounded border-gray-300" />
+                                  <span className="text-sm text-gray-700">{DOMAIN_TO_UNIVERSITY[domain]}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-2">여자 허용 도메인</p>
+                              {ALLOWED_DOMAINS.map((domain) => (
+                                <label key={`detail-edit-female-${domain}`} className="flex items-center gap-2 mb-1 cursor-pointer">
+                                  <input type="checkbox" checked={editingEvent.female_domains.includes(domain)}
+                                    onChange={() => toggleEditDomain('female_domains', domain)} className="rounded border-gray-300" />
+                                  <span className="text-sm text-gray-700">{DOMAIN_TO_UNIVERSITY[domain]}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mb-4">
                         <label className="block text-xs text-gray-500 mb-2">지원 방식</label>
                         <div className="flex flex-wrap gap-2">
                           {APPLICATION_MODES.map((mode) => (
@@ -661,6 +843,8 @@ function AdminPage() {
                           className="px-3 py-1 text-xs rounded-lg border border-gray-400 text-gray-500 hover:bg-gray-100">소개팅 종료</button>
                       </>
                     )}
+                    <button onClick={() => handleDeleteEvent(evt.id)}
+                      className="px-3 py-1 text-xs rounded-lg border border-red-300 text-red-500 hover:bg-red-50">삭제</button>
                   </div>
                   </>
                   )}
@@ -668,7 +852,23 @@ function AdminPage() {
 
                 {/* Applicants */}
                 <div className="mb-6">
-                  <h3 className="text-sm font-bold text-gray-700 mb-3">지원자 ({applicants.length}명)</h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-gray-700">지원자 ({applicants.length}명)</h3>
+                    {evt.application_mode === 'selection' && evt.status === 'closed' && applicants.some((a) => a.status === 'pending') && (
+                      <button onClick={handleBulkApprove}
+                        className="px-3 py-1 text-xs rounded-lg bg-green-500 text-white hover:bg-green-600">
+                        전원 승인
+                      </button>
+                    )}
+                  </div>
+
+                  {evt.application_mode === 'selection' && (
+                    <div className="flex gap-3 mb-3 text-xs text-gray-500">
+                      <span>승인: <span className="font-semibold text-green-600">{applicants.filter((a) => a.status === 'approved').length}명</span></span>
+                      <span>대기: <span className="font-semibold text-yellow-600">{applicants.filter((a) => a.status === 'pending').length}명</span></span>
+                      <span>거절: <span className="font-semibold text-red-500">{applicants.filter((a) => a.status === 'rejected').length}명</span></span>
+                    </div>
+                  )}
 
                   {applicants.length === 0 ? (
                     <div className="bg-white rounded-xl shadow-sm p-8 text-center">
@@ -680,26 +880,46 @@ function AdminPage() {
                       <h4 className="text-xs font-semibold text-blue-600 mb-2">남자 ({males.length}명)</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                         {males.map((a) => (
-                          <div key={a.user_id} className="bg-blue-50 rounded-xl p-3 text-xs">
+                          <div key={a.user_id} onClick={() => setSelectedApplicant(a)} className={`rounded-xl p-3 text-xs cursor-pointer hover:shadow-md transition-shadow ${
+                            a.status === 'rejected' ? 'bg-gray-100 opacity-60' :
+                            a.status === 'approved' ? 'bg-blue-50 ring-2 ring-green-400' : 'bg-blue-50'
+                          }`}>
                             {a.photo_url && (
-                              <img src={a.photo_url} alt="사진" onClick={() => setPhotoModal(a.photo_url)}
-                                className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer hover:opacity-80 transition-opacity" />
+                              <img src={a.photo_url} alt="사진"
+                                className="w-full h-32 object-cover rounded-lg mb-2" />
                             )}
-                            <p className="font-bold text-blue-700 mb-1">
-                              {a.profile?.nickname} <span className="font-normal text-gray-400">{a.profile?.birth_year}년생</span>
-                            </p>
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="font-bold text-blue-700">
+                                {a.profile?.nickname} <span className="font-normal text-gray-400">{a.profile?.birth_year}년생</span>
+                              </p>
+                              {evt.application_mode === 'selection' && (
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                  a.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                  a.status === 'rejected' ? 'bg-red-100 text-red-600' :
+                                  'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {a.status === 'approved' ? '승인' : a.status === 'rejected' ? '거절' : '대기'}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-gray-500">{a.profile?.university} · {a.profile?.department}</p>
-                            {a.blind && (
-                              <div className="mt-1.5 text-gray-500 space-y-0.5">
-                                {a.blind.height && <p>키 {a.blind.height}cm</p>}
-                                <p>{[a.blind.body_type, a.blind.face_type, a.blind.mbti].filter(Boolean).join(' · ')}</p>
-                                <p>{[a.blind.smoking && `흡연: ${a.blind.smoking}`, a.blind.drinking && `음주: ${a.blind.drinking}`].filter(Boolean).join(' · ')}</p>
-                                {a.blind.military_service && <p>군복무: {a.blind.military_service}</p>}
-                                {a.blind.personality?.length > 0 && <p>성격: {a.blind.personality.join(', ')}</p>}
-                                {a.blind.interests?.length > 0 && <p>관심사: {a.blind.interests.join(', ')}</p>}
+                            <p className="text-gray-500 mt-1">{[a.blind?.body_type, a.blind?.face_type, a.blind?.mbti].filter(Boolean).join(' · ')}</p>
+                            {evt.application_mode === 'selection' && evt.status === 'closed' && (
+                              <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                                {a.status !== 'approved' && (
+                                  <button onClick={() => handleApplicantStatus(a.id, 'approved')}
+                                    className="px-2 py-1 rounded bg-green-500 text-white hover:bg-green-600">승인</button>
+                                )}
+                                {a.status !== 'rejected' && (
+                                  <button onClick={() => handleApplicantStatus(a.id, 'rejected')}
+                                    className="px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600">거절</button>
+                                )}
+                                {a.status !== 'pending' && (
+                                  <button onClick={() => handleApplicantStatus(a.id, 'pending')}
+                                    className="px-2 py-1 rounded bg-gray-300 text-gray-700 hover:bg-gray-400">취소</button>
+                                )}
                               </div>
                             )}
-                            <p className="text-gray-400 mt-1">신청: {new Date(a.applied_at).toLocaleDateString('ko-KR')}</p>
                           </div>
                         ))}
                       </div>
@@ -708,25 +928,46 @@ function AdminPage() {
                       <h4 className="text-xs font-semibold text-pink-600 mb-2">여자 ({females.length}명)</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                         {females.map((a) => (
-                          <div key={a.user_id} className="bg-pink-50 rounded-xl p-3 text-xs">
+                          <div key={a.user_id} onClick={() => setSelectedApplicant(a)} className={`rounded-xl p-3 text-xs cursor-pointer hover:shadow-md transition-shadow ${
+                            a.status === 'rejected' ? 'bg-gray-100 opacity-60' :
+                            a.status === 'approved' ? 'bg-pink-50 ring-2 ring-green-400' : 'bg-pink-50'
+                          }`}>
                             {a.photo_url && (
-                              <img src={a.photo_url} alt="사진" onClick={() => setPhotoModal(a.photo_url)}
-                                className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer hover:opacity-80 transition-opacity" />
+                              <img src={a.photo_url} alt="사진"
+                                className="w-full h-32 object-cover rounded-lg mb-2" />
                             )}
-                            <p className="font-bold text-pink-700 mb-1">
-                              {a.profile?.nickname} <span className="font-normal text-gray-400">{a.profile?.birth_year}년생</span>
-                            </p>
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="font-bold text-pink-700">
+                                {a.profile?.nickname} <span className="font-normal text-gray-400">{a.profile?.birth_year}년생</span>
+                              </p>
+                              {evt.application_mode === 'selection' && (
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                  a.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                  a.status === 'rejected' ? 'bg-red-100 text-red-600' :
+                                  'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {a.status === 'approved' ? '승인' : a.status === 'rejected' ? '거절' : '대기'}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-gray-500">{a.profile?.university} · {a.profile?.department}</p>
-                            {a.blind && (
-                              <div className="mt-1.5 text-gray-500 space-y-0.5">
-                                {a.blind.height && <p>키 {a.blind.height}cm</p>}
-                                <p>{[a.blind.body_type, a.blind.face_type, a.blind.mbti].filter(Boolean).join(' · ')}</p>
-                                <p>{[a.blind.smoking && `흡연: ${a.blind.smoking}`, a.blind.drinking && `음주: ${a.blind.drinking}`].filter(Boolean).join(' · ')}</p>
-                                {a.blind.personality?.length > 0 && <p>성격: {a.blind.personality.join(', ')}</p>}
-                                {a.blind.interests?.length > 0 && <p>관심사: {a.blind.interests.join(', ')}</p>}
+                            <p className="text-gray-500 mt-1">{[a.blind?.body_type, a.blind?.face_type, a.blind?.mbti].filter(Boolean).join(' · ')}</p>
+                            {evt.application_mode === 'selection' && evt.status === 'closed' && (
+                              <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                                {a.status !== 'approved' && (
+                                  <button onClick={() => handleApplicantStatus(a.id, 'approved')}
+                                    className="px-2 py-1 rounded bg-green-500 text-white hover:bg-green-600">승인</button>
+                                )}
+                                {a.status !== 'rejected' && (
+                                  <button onClick={() => handleApplicantStatus(a.id, 'rejected')}
+                                    className="px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600">거절</button>
+                                )}
+                                {a.status !== 'pending' && (
+                                  <button onClick={() => handleApplicantStatus(a.id, 'pending')}
+                                    className="px-2 py-1 rounded bg-gray-300 text-gray-700 hover:bg-gray-400">취소</button>
+                                )}
                               </div>
                             )}
-                            <p className="text-gray-400 mt-1">신청: {new Date(a.applied_at).toLocaleDateString('ko-KR')}</p>
                           </div>
                         ))}
                       </div>
@@ -1305,26 +1546,114 @@ function AdminPage() {
         )}
       </div>
 
-      {/* Photo Modal */}
-      {photoModal && (
-        <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-          onClick={() => setPhotoModal(null)}
-        >
-          <img
-            src={photoModal}
-            alt="전체 사진"
-            className="max-w-full max-h-full object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            onClick={() => setPhotoModal(null)}
-            className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-gray-300"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {/* Applicant Detail Modal */}
+      {selectedApplicant && (() => {
+        const a = selectedApplicant;
+        const b = a.blind;
+        const ideal = a.ideal || a.preferences_snapshot;
+        return (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center p-4 overflow-y-auto"
+            onClick={() => setSelectedApplicant(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8"
+              onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between p-5 border-b">
+                <h3 className="text-lg font-bold text-gray-900">{a.profile?.nickname}</h3>
+                <button onClick={() => setSelectedApplicant(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              </div>
+
+              <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
+                {/* Photo */}
+                {a.photo_url && (
+                  <img src={a.photo_url} alt="사진"
+                    className="w-full max-h-96 object-contain rounded-xl bg-gray-100" />
+                )}
+
+                {/* Basic Info */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-700 mb-2">기본 정보</h4>
+                  <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+                    <p>성별: <span className="font-medium text-gray-800">{a.profile?.gender}</span></p>
+                    <p>출생: <span className="font-medium text-gray-800">{a.profile?.birth_year}년</span></p>
+                    <p>학교: <span className="font-medium text-gray-800">{a.profile?.university}</span></p>
+                    <p>학과: <span className="font-medium text-gray-800">{a.profile?.department}</span></p>
+                  </div>
+                </div>
+
+                {/* Blind Profile */}
+                {b && (
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700 mb-2">블라인드 프로필</h4>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+                      {b.height && <p>키: <span className="font-medium text-gray-800">{b.height}cm</span></p>}
+                      <p>체형: <span className="font-medium text-gray-800">{b.body_type}</span></p>
+                      <p>얼굴상: <span className="font-medium text-gray-800">{b.face_type}</span></p>
+                      <p>눈: <span className="font-medium text-gray-800">{b.eye_type}</span></p>
+                      <p>MBTI: <span className="font-medium text-gray-800">{b.mbti}</span></p>
+                      <p>종교: <span className="font-medium text-gray-800">{b.religion}</span></p>
+                      <p>흡연: <span className="font-medium text-gray-800">{b.smoking}</span></p>
+                      <p>음주: <span className="font-medium text-gray-800">{b.drinking}</span></p>
+                      <p>타투: <span className="font-medium text-gray-800">{b.tattoo}</span></p>
+                      {b.military_service && <p>군복무: <span className="font-medium text-gray-800">{b.military_service}</span></p>}
+                      <p>연락 빈도: <span className="font-medium text-gray-800">{b.contact_frequency}</span></p>
+                      {b.dating_style && <p>연애 스타일: <span className="font-medium text-gray-800">{b.dating_style}</span></p>}
+                    </div>
+                    {b.personality?.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">성격: <span className="font-medium text-gray-800">{b.personality.join(', ')}</span></p>
+                    )}
+                    {b.interests?.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">관심사: <span className="font-medium text-gray-800">{b.interests.join(', ')}</span></p>
+                    )}
+                    {b.date_style?.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">데이트: <span className="font-medium text-gray-800">{b.date_style.join(', ')}</span></p>
+                    )}
+                    <p className="text-xs text-gray-600 mt-1">연락 수단: <span className="font-medium text-gray-800">{b.contact_method} — {b.contact_value}</span></p>
+                  </div>
+                )}
+
+                {/* Ideal Type */}
+                {ideal && (
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700 mb-2">이상형 정보</h4>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+                      {(ideal.age_min || ideal.age_max) && (
+                        <p>나이: <span className="font-medium text-gray-800">{ideal.age_max ? new Date().getFullYear() - ideal.age_max : '?'}~{ideal.age_min ? new Date().getFullYear() - ideal.age_min : '?'}세 (만)</span></p>
+                      )}
+                      {(ideal.height_min || ideal.height_max) && (
+                        <p>키: <span className="font-medium text-gray-800">{ideal.height_min || '?'}~{ideal.height_max || '?'}cm</span></p>
+                      )}
+                      {ideal.body_type && <p>체형: <span className="font-medium text-gray-800">{ideal.body_type}</span></p>}
+                      {ideal.face_type && <p>얼굴상: <span className="font-medium text-gray-800">{ideal.face_type}</span></p>}
+                      {ideal.eye_type && <p>눈: <span className="font-medium text-gray-800">{ideal.eye_type}</span></p>}
+                      {ideal.mbti && <p>MBTI: <span className="font-medium text-gray-800">{ideal.mbti}</span></p>}
+                      {ideal.religion && <p>종교: <span className="font-medium text-gray-800">{ideal.religion}</span></p>}
+                      {ideal.smoking && <p>흡연: <span className="font-medium text-gray-800">{ideal.smoking}</span></p>}
+                      {ideal.drinking && <p>음주: <span className="font-medium text-gray-800">{ideal.drinking}</span></p>}
+                      {ideal.tattoo && <p>타투: <span className="font-medium text-gray-800">{ideal.tattoo}</span></p>}
+                      {ideal.military_service && <p>군복무: <span className="font-medium text-gray-800">{ideal.military_service}</span></p>}
+                      {ideal.contact_frequency && <p>연락 빈도: <span className="font-medium text-gray-800">{ideal.contact_frequency}</span></p>}
+                      {ideal.dating_style && <p>연애 스타일: <span className="font-medium text-gray-800">{ideal.dating_style}</span></p>}
+                    </div>
+                    {ideal.personality?.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">성격: <span className="font-medium text-gray-800">{ideal.personality.join(', ')}</span></p>
+                    )}
+                    {ideal.interests?.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">관심사: <span className="font-medium text-gray-800">{ideal.interests.join(', ')}</span></p>
+                    )}
+                    {ideal.date_style?.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">데이트: <span className="font-medium text-gray-800">{ideal.date_style.join(', ')}</span></p>
+                    )}
+                  </div>
+                )}
+
+                {/* Meta */}
+                <p className="text-xs text-gray-400">신청일: {new Date(a.applied_at).toLocaleDateString('ko-KR')}</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -12,6 +12,7 @@ const WEIGHTS = {
   tattoo: 2,
   contact_frequency: 1,
   height: 3,
+  age: 3,
   interests: 2,
   personality: 2,
   date_style: 1,
@@ -41,6 +42,21 @@ export function calculateCompatibility(profile, idealPrefs) {
 
     if (profile[field] === idealVal) {
       score += weight;
+    }
+  }
+
+  // Age (birth year) range matching
+  if (idealPrefs.age_min || idealPrefs.age_max) {
+    const weight = WEIGHTS.age;
+    totalWeight += weight;
+
+    const birthYear = profile.birth_year;
+    if (birthYear) {
+      const min = idealPrefs.age_min || 0;
+      const max = idealPrefs.age_max || 9999;
+      if (birthYear >= min && birthYear <= max) {
+        score += weight;
+      }
     }
   }
 
@@ -200,14 +216,33 @@ export async function createChatRoom(eventId, match, coupleNumber) {
  * Fetches applications, computes preferences, runs Gale-Shapley, saves results.
  */
 export async function runMatching(eventId) {
-  // 1. Fetch all applications + blind profiles + ideal preferences for this event
-  const { data: applications, error: appError } = await supabase
+  // 0. Check event application mode
+  const { data: eventData } = await supabase
+    .from('matching_events')
+    .select('application_mode')
+    .eq('id', eventId)
+    .single();
+
+  const isSelection = eventData?.application_mode === 'selection';
+
+  // 1. Fetch applications (for selection mode, only approved ones)
+  let query = supabase
     .from('applications')
     .select('user_id, profile_snapshot, preferences_snapshot')
     .eq('event_id', eventId);
 
+  if (isSelection) {
+    query = query.eq('status', 'approved');
+  }
+
+  const { data: applications, error: appError } = await query;
+
   if (appError) throw new Error('신청 데이터 조회 실패: ' + appError.message);
-  if (!applications || applications.length < 2) throw new Error('매칭하려면 최소 2명의 신청자가 필요합니다.');
+  if (!applications || applications.length < 2) {
+    throw new Error(isSelection
+      ? '매칭하려면 최소 2명의 승인된 신청자가 필요합니다.'
+      : '매칭하려면 최소 2명의 신청자가 필요합니다.');
+  }
 
   // 2. Separate by gender
   const males = applications.filter((a) => a.profile_snapshot?.gender === '남자');
@@ -223,11 +258,13 @@ export async function runMatching(eventId) {
   const scoreMap = {};
 
   for (const male of males) {
-    const maleProfile = male.profile_snapshot?.blind || male.profile_snapshot;
+    const maleBlind = male.profile_snapshot?.blind || male.profile_snapshot;
+    const maleProfile = { ...maleBlind, birth_year: male.profile_snapshot?.birth_year };
     const maleIdeal = male.preferences_snapshot;
 
     const scored = females.map((female) => {
-      const femaleProfile = female.profile_snapshot?.blind || female.profile_snapshot;
+      const femaleBlind = female.profile_snapshot?.blind || female.profile_snapshot;
+      const femaleProfile = { ...femaleBlind, birth_year: female.profile_snapshot?.birth_year };
       const femaleIdeal = female.preferences_snapshot;
 
       // Male's preference for this female (how well female matches male's ideal)
@@ -250,7 +287,8 @@ export async function runMatching(eventId) {
     const femaleIdeal = female.preferences_snapshot;
 
     const scored = males.map((male) => {
-      const maleProfile = male.profile_snapshot?.blind || male.profile_snapshot;
+      const maleBlind = male.profile_snapshot?.blind || male.profile_snapshot;
+      const maleProfile = { ...maleBlind, birth_year: male.profile_snapshot?.birth_year };
       const femaleScore = calculateCompatibility(maleProfile, femaleIdeal);
       return { maleId: male.user_id, femaleScore };
     });

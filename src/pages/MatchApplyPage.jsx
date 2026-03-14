@@ -104,8 +104,19 @@ function MatchApplyPage() {
         const allowed = domainList && domainList.includes(userDomain);
         return { ...evt, domainAllowed: !!allowed };
       });
+      // Check which events user already applied to
+      const { data: myApps } = await supabase
+        .from('applications')
+        .select('event_id')
+        .eq('user_id', user.id);
+      const appliedEventIds = new Set((myApps || []).map(a => a.event_id));
+      const markedWithApplied = markedEvents.map((evt) => ({
+        ...evt,
+        alreadyApplied: appliedEventIds.has(evt.id),
+      }));
+
       // For selection mode events, fetch applicant counts by gender
-      const enrichedEvents = await Promise.all(markedEvents.map(async (evt) => {
+      const enrichedEvents = await Promise.all(markedWithApplied.map(async (evt) => {
         if (evt.application_mode === 'selection') {
           const { data: apps } = await supabase
             .from('applications')
@@ -210,6 +221,7 @@ function MatchApplyPage() {
       setStepIndex(STEPS.indexOf(effectiveSteps[nextIdx]));
     }
     setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const goBack = () => {
@@ -218,6 +230,7 @@ function MatchApplyPage() {
       setStepIndex(STEPS.indexOf(effectiveSteps[prevIdx]));
     }
     setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSubmit = async () => {
@@ -429,15 +442,17 @@ function MatchApplyPage() {
                   <button
                     key={evt.id}
                     type="button"
-                    onClick={() => { if (evt.domainAllowed) { setSelectedEvent(evt); goNext(); } }}
-                    disabled={!evt.domainAllowed}
+                    onClick={() => { if (evt.domainAllowed && !evt.alreadyApplied) { setSelectedEvent(evt); goNext(); } }}
+                    disabled={!evt.domainAllowed || evt.alreadyApplied}
                     className={`w-full text-left rounded-xl shadow-sm p-6 border-2 transition-all ${
-                      !evt.domainAllowed ? 'bg-gray-100 border-transparent cursor-not-allowed opacity-70' :
+                      !evt.domainAllowed || evt.alreadyApplied ? 'bg-gray-100 border-transparent cursor-not-allowed opacity-70' :
                       selectedEvent?.id === evt.id ? 'bg-white border-primary' : 'bg-white border-transparent hover:border-primary'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      {!evt.domainAllowed ? (
+                      {evt.alreadyApplied ? (
+                        <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded-full">신청 완료</span>
+                      ) : !evt.domainAllowed ? (
                         <span className="bg-red-100 text-red-600 text-xs font-semibold px-2 py-1 rounded-full">참가 불가</span>
                       ) : (
                         <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full">모집 중</span>
@@ -470,7 +485,10 @@ function MatchApplyPage() {
                     {evt.description && (
                       <p className="text-xs text-gray-400 mt-2">{evt.description}</p>
                     )}
-                    {!evt.domainAllowed && (
+                    {evt.alreadyApplied && (
+                      <p className="text-xs text-blue-500 mt-2">이미 신청한 소개팅입니다.</p>
+                    )}
+                    {!evt.domainAllowed && !evt.alreadyApplied && (
                       <p className="text-xs text-red-500 mt-2">소속 대학교가 참가 대상에 포함되지 않습니다.</p>
                     )}
                   </button>

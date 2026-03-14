@@ -32,7 +32,7 @@ export function useChat(roomId) {
       if (userIds.length > 0) {
         const { data: profilesData } = await supabase
           .from('profiles')
-          .select('user_id, nickname')
+          .select('user_id, nickname, gender, birth_year, university, department')
           .in('user_id', userIds);
         (profilesData || []).forEach((p) => { profileMap[p.user_id] = p; });
       }

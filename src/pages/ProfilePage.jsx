@@ -187,6 +187,16 @@ function ProfilePage() {
                          evt?.status === 'completed' ? '매칭 완료' :
                          evt?.status === 'ended' ? '종료' : evt?.status}
                       </span>
+                      {app.status === 'rejected' && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">
+                          미선정
+                        </span>
+                      )}
+                      {app.status === 'approved' && evt?.status !== 'completed' && evt?.status !== 'ended' && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-600">
+                          선정됨
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm font-medium text-gray-800">{evt?.title || '알 수 없는 이벤트'}</p>
                     <p className="text-xs text-gray-500 mt-1">

@@ -57,6 +57,8 @@ function ChatPage() {
   const { messages, participants, loading, sendMessage } = useChat(roomId);
   const [input, setInput] = useState('');
   const [roomInfo, setRoomInfo] = useState(null);
+  const [partnerInfo, setPartnerInfo] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
   const messagesEndRef = useRef(null);
 
   // Build sender name and role maps from participants
@@ -79,6 +81,50 @@ function ChatPage() {
     if (roomId) fetchRoom();
   }, [roomId]);
 
+  // Fetch partner's profile + ideal from application snapshots (RLS-safe)
+  useEffect(() => {
+    const partner = participants.find((p) => p.role === 'member' && p.user_id !== user?.id);
+    if (!partner || !roomInfo) return;
+
+    async function fetchPartner() {
+      // Get match to find event_id
+      const { data: room } = await supabase
+        .from('chat_rooms')
+        .select('match_id')
+        .eq('id', roomId)
+        .single();
+
+      if (!room?.match_id) return;
+
+      const { data: match } = await supabase
+        .from('matches')
+        .select('event_id')
+        .eq('id', room.match_id)
+        .single();
+
+      if (!match?.event_id) return;
+
+      // Get partner's application snapshot (accessible via RLS)
+      const { data: app } = await supabase
+        .from('applications')
+        .select('profile_snapshot, preferences_snapshot')
+        .eq('event_id', match.event_id)
+        .eq('user_id', partner.user_id)
+        .single();
+
+      if (app) {
+        const snapshot = app.profile_snapshot || {};
+        const blind = snapshot.blind || snapshot;
+        setPartnerInfo({
+          profile: partner.profile,
+          blind: blind,
+          ideal: app.preferences_snapshot,
+        });
+      }
+    }
+    fetchPartner();
+  }, [participants, user, roomInfo, roomId]);
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -100,60 +146,142 @@ function ChatPage() {
     );
   }
 
+  const currentYear = new Date().getFullYear();
+  const partner = partnerInfo;
+  const blind = partner?.blind;
+  const ideal = partner?.ideal;
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <Link to="/profile" className="text-gray-400 hover:text-gray-600">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
-          </Link>
-          <div>
-            <h1 className="text-sm font-bold text-gray-800">{roomInfo?.name || '채팅방'}</h1>
-            <p className="text-xs text-gray-400">{participants.length}명 참여 중</p>
+    <div className="h-screen bg-gray-100 flex justify-center">
+      <div className="flex flex-col h-full w-full max-w-2xl bg-gray-50">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <Link to="/profile" className="text-gray-400 hover:text-gray-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-sm font-bold text-gray-800">{roomInfo?.name || '채팅방'}</h1>
+              <p className="text-xs text-gray-400">{participants.length}명 참여 중</p>
+            </div>
           </div>
-        </div>
-      </header>
+          {partner && (
+            <button
+              onClick={() => setShowProfile(!showProfile)}
+              className="text-xs text-primary font-medium hover:underline"
+            >
+              {showProfile ? '프로필 닫기' : '상대 프로필'}
+            </button>
+          )}
+        </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {messages.map((msg) => (
-          <ChatBubble
-            key={msg.id}
-            message={msg}
-            isOwn={msg.sender_id === user?.id}
-            isAdmin={senderRoles[msg.sender_id] === 'admin'}
-            senderName={senderNames[msg.sender_id] || '알 수 없음'}
-          />
-        ))}
-        <div ref={messagesEndRef} />
+        {/* Partner Profile Panel */}
+        {showProfile && partner && (
+          <div className="bg-white border-b border-gray-200 px-3 py-2 shrink-0 overflow-y-auto max-h-[40vh]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {/* Partner Basic + Blind Profile */}
+              <div className={`rounded-lg p-2.5 ${partner.profile?.gender === '남자' ? 'bg-blue-50' : 'bg-pink-50'}`}>
+                <p className={`text-xs font-bold ${partner.profile?.gender === '남자' ? 'text-blue-700' : 'text-pink-700'}`}>
+                  {partner.profile?.nickname}
+                  <span className="font-normal text-gray-400 ml-1">({partner.profile?.gender})</span>
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  {partner.profile?.university} · {partner.profile?.department} · 만 {partner.profile?.birth_year ? currentYear - partner.profile.birth_year : '?'}세
+                </p>
+                {blind && (
+                  <div className="mt-1.5 grid grid-cols-3 md:grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-gray-600">
+                    {blind.height && blind.height_public !== false && <p>키 <span className="font-medium text-gray-800">{blind.height}cm</span></p>}
+                    {blind.height && blind.height_public === false && <p>키 <span className="font-medium text-gray-800">비공개</span></p>}
+                    <p>체형 <span className="font-medium text-gray-800">{blind.body_type}</span></p>
+                    <p>얼굴 <span className="font-medium text-gray-800">{blind.face_type}</span></p>
+                    <p>눈 <span className="font-medium text-gray-800">{blind.eye_type}</span></p>
+                    <p>MBTI <span className="font-medium text-gray-800">{blind.mbti}</span></p>
+                    <p>종교 <span className="font-medium text-gray-800">{blind.religion}</span></p>
+                    <p>흡연 <span className="font-medium text-gray-800">{blind.smoking}</span></p>
+                    <p>음주 <span className="font-medium text-gray-800">{blind.drinking}</span></p>
+                    <p>타투 <span className="font-medium text-gray-800">{blind.tattoo}</span></p>
+                    {blind.military_service && <p>군복무 <span className="font-medium text-gray-800">{blind.military_service}</span></p>}
+                    <p>연락 <span className="font-medium text-gray-800">{blind.contact_frequency}</span></p>
+                    <p>연애 <span className="font-medium text-gray-800">{blind.dating_style || '-'}</span></p>
+                    <p className="col-span-3 md:col-span-2">성격 <span className="font-medium text-gray-800">{blind.personality?.length > 0 ? blind.personality.join(', ') : '-'}</span></p>
+                    <p className="col-span-3 md:col-span-2">관심사 <span className="font-medium text-gray-800">{blind.interests?.length > 0 ? blind.interests.join(', ') : '-'}</span></p>
+                    <p className="col-span-3 md:col-span-2">데이트 <span className="font-medium text-gray-800">{blind.date_style?.length > 0 ? blind.date_style.join(', ') : '-'}</span></p>
+                  </div>
+                )}
+              </div>
+
+              {/* Partner Ideal Type */}
+              {ideal && (
+                <div className="rounded-lg p-2.5 bg-purple-50">
+                  <p className="text-xs font-bold text-gray-700 mb-1">원하는 이상형</p>
+                  <div className="grid grid-cols-3 md:grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-gray-600">
+                    {(ideal.age_min || ideal.age_max) && (
+                      <p>나이 <span className="font-medium text-gray-800">{ideal.age_max ? currentYear - ideal.age_max : '?'}~{ideal.age_min ? currentYear - ideal.age_min : '?'}세</span></p>
+                    )}
+                    {(ideal.height_min || ideal.height_max) && (
+                      <p>키 <span className="font-medium text-gray-800">{ideal.height_min || '?'}~{ideal.height_max || '?'}cm</span></p>
+                    )}
+                    {ideal.body_type && <p>체형 <span className="font-medium text-gray-800">{ideal.body_type}</span></p>}
+                    {ideal.face_type && <p>얼굴 <span className="font-medium text-gray-800">{ideal.face_type}</span></p>}
+                    {ideal.eye_type && <p>눈 <span className="font-medium text-gray-800">{ideal.eye_type}</span></p>}
+                    {ideal.mbti && <p>MBTI <span className="font-medium text-gray-800">{ideal.mbti}</span></p>}
+                    {ideal.religion && <p>종교 <span className="font-medium text-gray-800">{ideal.religion}</span></p>}
+                    {ideal.smoking && <p>흡연 <span className="font-medium text-gray-800">{ideal.smoking}</span></p>}
+                    {ideal.drinking && <p>음주 <span className="font-medium text-gray-800">{ideal.drinking}</span></p>}
+                    {ideal.tattoo && <p>타투 <span className="font-medium text-gray-800">{ideal.tattoo}</span></p>}
+                    {ideal.military_service && <p>군복무 <span className="font-medium text-gray-800">{ideal.military_service}</span></p>}
+                    {ideal.contact_frequency && <p>연락 <span className="font-medium text-gray-800">{ideal.contact_frequency}</span></p>}
+                    {ideal.dating_style && <p>연애 <span className="font-medium text-gray-800">{ideal.dating_style}</span></p>}
+                    {ideal.personality?.length > 0 && <p className="col-span-3 md:col-span-2">성격 <span className="font-medium text-gray-800">{ideal.personality.join(', ')}</span></p>}
+                    {ideal.interests?.length > 0 && <p className="col-span-3 md:col-span-2">관심사 <span className="font-medium text-gray-800">{ideal.interests.join(', ')}</span></p>}
+                    {ideal.date_style?.length > 0 && <p className="col-span-3 md:col-span-2">데이트 <span className="font-medium text-gray-800">{ideal.date_style.join(', ')}</span></p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {messages.map((msg) => (
+            <ChatBubble
+              key={msg.id}
+              message={msg}
+              isOwn={msg.sender_id === user?.id}
+              isAdmin={senderRoles[msg.sender_id] === 'admin'}
+              senderName={senderNames[msg.sender_id] || '알 수 없음'}
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input */}
+        {roomInfo?.status === 'closed' ? (
+          <div className="bg-gray-100 border-t border-gray-200 px-4 py-4 text-center shrink-0">
+            <p className="text-sm text-gray-400">채팅방이 종료되었습니다.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSend} className="bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shrink-0">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="메시지를 입력하세요..."
+              className="flex-1 p-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300 transition-all"
+            >
+              전송
+            </button>
+          </form>
+        )}
       </div>
-
-      {/* Input */}
-      {roomInfo?.status === 'closed' ? (
-        <div className="bg-gray-100 border-t border-gray-200 px-4 py-4 text-center shrink-0">
-          <p className="text-sm text-gray-400">채팅방이 종료되었습니다.</p>
-        </div>
-      ) : (
-        <form onSubmit={handleSend} className="bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shrink-0">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="메시지를 입력하세요..."
-            className="flex-1 p-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300 transition-all"
-          >
-            전송
-          </button>
-        </form>
-      )}
     </div>
   );
 }
