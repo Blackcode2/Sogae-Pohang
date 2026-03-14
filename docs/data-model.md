@@ -256,3 +256,4 @@ ADMIN_EMAILS: ['doky03115@gmail.com']
 | EVENT_TYPES | blind_online (블라인드 소개팅 온라인), blind_offline (오프라인), rotation (로테이션), other (기타) |
 | PHOTO_SETTINGS | none (사진 없음), optional (선택), required (필수) |
 | EVENT_TYPE_LABELS | EVENT_TYPES의 value→label 매핑 객체 |
+| EVENT_DESCRIPTION_TEMPLATES | 이벤트 종류별 기본 안내사항 템플릿 (blind_online, blind_offline) |

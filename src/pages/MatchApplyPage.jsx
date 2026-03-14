@@ -115,26 +115,11 @@ function MatchApplyPage() {
         alreadyApplied: appliedEventIds.has(evt.id),
       }));
 
-      // For selection mode events, fetch applicant counts by gender
-      const enrichedEvents = await Promise.all(markedWithApplied.map(async (evt) => {
-        if (evt.application_mode === 'selection') {
-          const { data: apps } = await supabase
-            .from('applications')
-            .select('user_id')
-            .eq('event_id', evt.id);
-          const userIds = (apps || []).map(a => a.user_id);
-          let maleCount = 0, femaleCount = 0;
-          if (userIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from('profiles')
-              .select('user_id, gender')
-              .in('user_id', userIds);
-            maleCount = (profiles || []).filter(p => p.gender === '남자').length;
-            femaleCount = (profiles || []).filter(p => p.gender === '여자').length;
-          }
-          return { ...evt, applicant_male: maleCount, applicant_female: femaleCount };
-        }
-        return evt;
+      // Use current_male/current_female from matching_events (readable by all users)
+      const enrichedEvents = markedWithApplied.map((evt) => ({
+        ...evt,
+        applicant_male: evt.current_male,
+        applicant_female: evt.current_female,
       }));
       setEvents(enrichedEvents);
 
@@ -236,6 +221,29 @@ function MatchApplyPage() {
   const handleSubmit = async () => {
     setError('');
     setApplying(true);
+
+    // Capacity check: re-fetch latest event data to prevent race conditions
+    if (selectedEvent.application_mode === 'first_come') {
+      const { data: latestEvent } = await supabase
+        .from('matching_events')
+        .select('current_male, current_female, max_male, max_female, status')
+        .eq('id', selectedEvent.id)
+        .single();
+
+      if (latestEvent?.status !== 'open') {
+        setError('이 소개팅은 이미 마감되었습니다.');
+        setApplying(false);
+        return;
+      }
+
+      const currentCount = profile.gender === '남자' ? latestEvent.current_male : latestEvent.current_female;
+      const maxCount = profile.gender === '남자' ? latestEvent.max_male : latestEvent.max_female;
+      if (currentCount >= maxCount) {
+        setError(`${profile.gender} 정원이 마감되었습니다.`);
+        setApplying(false);
+        return;
+      }
+    }
 
     // Domain restriction check
     if (!selectedEvent.allow_all_domains) {
@@ -351,26 +359,33 @@ function MatchApplyPage() {
       return;
     }
 
-    // Update participant count
-    const genderField = profile.gender === '남자' ? 'current_male' : 'current_female';
-    const newCount = selectedEvent[genderField] + 1;
-    const updatePayload = { [genderField]: newCount };
+    // Increment participant count and check auto-close
+    {
+      const genderField = profile.gender === '남자' ? 'current_male' : 'current_female';
+      // Re-fetch latest to get accurate count after insert
+      const { data: latest } = await supabase
+        .from('matching_events')
+        .select('current_male, current_female, max_male, max_female')
+        .eq('id', selectedEvent.id)
+        .single();
 
-    // Auto-close for first_come mode when both genders are full
-    if (selectedEvent.application_mode === 'first_come') {
-      const otherFull = profile.gender === '남자'
-        ? selectedEvent.current_female >= selectedEvent.max_female
-        : selectedEvent.current_male >= selectedEvent.max_male;
-      const thisFull = newCount >= (profile.gender === '남자' ? selectedEvent.max_male : selectedEvent.max_female);
-      if (thisFull && otherFull) {
-        updatePayload.status = 'closed';
+      const newCount = (latest[genderField] || 0) + 1;
+      const updatePayload = { [genderField]: newCount };
+
+      // Auto-close for first_come mode when both genders are full
+      if (selectedEvent.application_mode === 'first_come') {
+        const maleCount = profile.gender === '남자' ? newCount : latest.current_male;
+        const femaleCount = profile.gender === '여자' ? newCount : latest.current_female;
+        if (maleCount >= latest.max_male && femaleCount >= latest.max_female) {
+          updatePayload.status = 'closed';
+        }
       }
-    }
 
-    await supabase
-      .from('matching_events')
-      .update(updatePayload)
-      .eq('id', selectedEvent.id);
+      await supabase
+        .from('matching_events')
+        .update(updatePayload)
+        .eq('id', selectedEvent.id);
+    }
 
     // Move to done step
     setStepIndex(STEPS.indexOf('done'));
@@ -438,20 +453,27 @@ function MatchApplyPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {events.map((evt) => (
+                {events.map((evt) => {
+                  const myGenderFull = evt.application_mode === 'first_come' && profile && (
+                    profile.gender === '남자' ? evt.current_male >= evt.max_male : evt.current_female >= evt.max_female
+                  );
+                  const canSelect = evt.domainAllowed && !evt.alreadyApplied && !myGenderFull;
+                  return (
                   <button
                     key={evt.id}
                     type="button"
-                    onClick={() => { if (evt.domainAllowed && !evt.alreadyApplied) { setSelectedEvent(evt); goNext(); } }}
-                    disabled={!evt.domainAllowed || evt.alreadyApplied}
+                    onClick={() => { if (canSelect) { setSelectedEvent(evt); goNext(); } }}
+                    disabled={!canSelect}
                     className={`w-full text-left rounded-xl shadow-sm p-6 border-2 transition-all ${
-                      !evt.domainAllowed || evt.alreadyApplied ? 'bg-gray-100 border-transparent cursor-not-allowed opacity-70' :
+                      !canSelect ? 'bg-gray-100 border-transparent cursor-not-allowed opacity-70' :
                       selectedEvent?.id === evt.id ? 'bg-white border-primary' : 'bg-white border-transparent hover:border-primary'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
                       {evt.alreadyApplied ? (
                         <span className="bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-1 rounded-full">신청 완료</span>
+                      ) : myGenderFull ? (
+                        <span className="bg-gray-200 text-gray-500 text-xs font-semibold px-2 py-1 rounded-full">{profile.gender} 마감</span>
                       ) : !evt.domainAllowed ? (
                         <span className="bg-red-100 text-red-600 text-xs font-semibold px-2 py-1 rounded-full">참가 불가</span>
                       ) : (
@@ -488,11 +510,15 @@ function MatchApplyPage() {
                     {evt.alreadyApplied && (
                       <p className="text-xs text-blue-500 mt-2">이미 신청한 소개팅입니다.</p>
                     )}
-                    {!evt.domainAllowed && !evt.alreadyApplied && (
+                    {myGenderFull && !evt.alreadyApplied && (
+                      <p className="text-xs text-gray-500 mt-2">{profile.gender} 모집 인원이 마감되었습니다.</p>
+                    )}
+                    {!evt.domainAllowed && !evt.alreadyApplied && !myGenderFull && (
                       <p className="text-xs text-red-500 mt-2">소속 대학교가 참가 대상에 포함되지 않습니다.</p>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

@@ -133,9 +133,10 @@ If no profile exists, shows a prompt to create one with a link to `/profile/setu
 - 신청 제출 시에도 도메인 이중 검증
 
 ### Event Display by Application Mode
-- **선착순 (first_come)**: 성별별 현재/최대 인원 표시
-- **선별 (selection)**: 성별별 모집 인원 + 실제 지원자 수 (applications 테이블 기반, 성별별)
+- **선착순 (first_come)**: 성별별 현재/최대 인원 표시 (`matching_events.current_male/current_female` 기반). 특정 성별 정원이 차면 "남자/여자 마감" 배지 표시 + 선택 불가
+- **선별 (selection)**: 성별별 모집 인원 + 실제 지원자 수 표시
 - 선착순/선별 모드 구분은 유저에게 표시하지 않음
+- 신청 시 서버 측 정원 재검증 (race condition 방지)
 
 ### Data Flow
 - Step indicator: 현재 step 위치를 시각적으로 표시 (done 제외)
@@ -195,6 +196,7 @@ Real-time chat room for matched couples + admin.
 - Event card shows: title, type badge, period, 남녀 인원
 - Create new event form:
   - 제목, 소개팅 종류, 안내사항, 사진 설정, 모집 방식 (선착순/선별), 시작일/종료일, 남녀 정원
+  - 소개팅 종류 변경 시 안내사항에 기본 템플릿 자동 채움 (`EVENT_DESCRIPTION_TEMPLATES`), 수정/삭제 가능
   - 도메인 제한: "모든 대학교 허용" 토글 → off 시 성별별 도메인 체크박스
 - **이벤트 수정**: 기존 이벤트의 모든 설정을 수정 가능 (인라인 편집 폼)
 - **상세 관리 페이지**: 이벤트 선택 시 상세 페이지로 이동
@@ -217,7 +219,7 @@ Real-time chat room for matched couples + admin.
 #### 채팅 관리 (Chat) — v2 추가
 - `AdminChatDashboard` 컴포넌트 렌더링
 - **소개팅별 채팅 그룹화**: 이벤트 탭으로 채팅방 필터링 (이벤트 제목 + 읽지 않은 메시지/멘션 배지)
-- 전체 공지: 선택된 이벤트 또는 모든 활성 채팅방에 시스템 메시지 일괄 전송
+- 전체 공지: 선택된 이벤트 또는 모든 활성 채팅방에 시스템 메시지 일괄 전송. 매크로 버튼 지원 (첫인사, 10분 남음, 연락처 교환, 종료 인사)
 - 채팅방 목록: 커플 닉네임, 최근 메시지, 읽지 않은 메시지 수 배지(빨강), @주선자 태그 알림 배지(앰버)
 - **참가자 프로필 카드**: 채팅방 상단에 매칭된 두 참가자의 프로필 + 제출 사진 표시
 - 개별 채팅방 선택 → AdminChatRoom:

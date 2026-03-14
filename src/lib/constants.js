@@ -108,3 +108,27 @@ export const APPLICATION_MODES = [
 export const APPLICATION_MODE_LABELS = Object.fromEntries(
   APPLICATION_MODES.map(({ value, label }) => [value, label])
 );
+
+// Default description templates per event type
+export const EVENT_DESCRIPTION_TEMPLATES = {
+  blind_online: `[블라인드 소개팅 안내]
+
+1. 지원 기간 내에 프로필과 이상형 정보를 작성하여 신청해주세요.
+2. 지원 기간 종료 후 선정 결과가 이메일로 안내됩니다.
+3. 정해진 날짜에 매칭 상대 + 주선자가 함께하는 채팅방이 동시에 열립니다.
+4. 채팅은 약 30~40분간 진행됩니다.
+5. 채팅 종료 전, 서로 연락처를 교환할지 확인한 뒤 마무리됩니다.
+
+* 매칭은 작성하신 이상형 조건을 기반으로 진행됩니다.
+* 채팅 시간은 상황에 따라 변동될 수 있습니다.`,
+  blind_offline: `[블라인드 소개팅 (오프라인) 안내]
+
+1. 지원 기간 내에 프로필과 이상형 정보를 작성하여 신청해주세요.
+2. 지원 기간 종료 후 선정 결과가 이메일로 안내됩니다.
+3. 안내된 날짜와 장소에서 매칭 상대를 만나게 됩니다.
+
+* 매칭은 작성하신 이상형 조건을 기반으로 진행됩니다.
+* 자세한 장소 및 시간은 선정 후 별도 안내됩니다.`,
+  rotation: '',
+  other: '',
+};

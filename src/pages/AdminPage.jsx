@@ -5,7 +5,7 @@ import { runMatching, createChatRoom } from '../lib/matching';
 import {
   EVENT_STATUS_LABELS, EVENT_TYPES, PHOTO_SETTINGS,
   EVENT_TYPE_LABELS, ALLOWED_DOMAINS, DOMAIN_TO_UNIVERSITY,
-  APPLICATION_MODES, APPLICATION_MODE_LABELS,
+  APPLICATION_MODES, APPLICATION_MODE_LABELS, EVENT_DESCRIPTION_TEMPLATES,
 } from '../lib/constants';
 import AdminChatDashboard from '../components/AdminChatDashboard';
 
@@ -30,7 +30,7 @@ function AdminPage() {
   const [newEvent, setNewEvent] = useState({
     title: '',
     event_type: 'blind_online',
-    description: '',
+    description: EVENT_DESCRIPTION_TEMPLATES['blind_online'] || '',
     photo_setting: 'none',
     start_date: '',
     end_date: '',
@@ -105,7 +105,7 @@ function AdminPage() {
     setMessage('이벤트가 생성되었습니다.');
     setShowNewEvent(false);
     setNewEvent({
-      title: '', event_type: 'blind_online', description: '', photo_setting: 'none',
+      title: '', event_type: 'blind_online', description: EVENT_DESCRIPTION_TEMPLATES['blind_online'] || '', photo_setting: 'none',
       start_date: '', end_date: '', max_male: 10, max_female: 10,
       allow_all_domains: true, male_domains: [], female_domains: [],
       application_mode: 'first_come', chat_start_date: '',
@@ -1030,7 +1030,10 @@ function AdminPage() {
                   <label className="block text-xs text-gray-500 mb-1">소개팅 종류</label>
                   <select
                     value={newEvent.event_type}
-                    onChange={(e) => setNewEvent({ ...newEvent, event_type: e.target.value })}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      setNewEvent({ ...newEvent, event_type: type, description: EVENT_DESCRIPTION_TEMPLATES[type] || '' });
+                    }}
                     className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     {EVENT_TYPES.map((t) => (

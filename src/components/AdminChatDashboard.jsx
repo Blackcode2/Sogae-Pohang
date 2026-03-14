@@ -4,6 +4,25 @@ import { useChat } from '../hooks/useChat';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 
+const BROADCAST_MACROS = [
+  {
+    label: '첫인사',
+    text: `안녕하세요, 주선자입니다! 오늘 참여해주셔서 감사합니다 :)\n\n지금부터 약 30분간 소개팅이 진행됩니다. 옆에서 함께할 테니 편하게 대화해주세요!\n\n궁금한 점이 있거나 도움이 필요하시면 @주선자 라고 태그해주시면 바로 확인하겠습니다.\n\n그럼 서로 인사부터 시작해볼까요?`,
+  },
+  {
+    label: '10분 남음',
+    text: '채팅 종료 10분 전입니다! 아직 못 나눈 이야기가 있다면 지금 해주세요 :)',
+  },
+  {
+    label: '연락처 교환',
+    text: '소개팅을 마무리할 시간이 다가왔습니다!\n서로 대화가 잘 통하셨나요? :)\n\n계속해서 대화를 이어가고 싶으시다면 연락처를 교환하실 수 있습니다.\n연락처 공유 의사가 있으신가요? 편하게 네 / 아니요로 답해주시면 됩니다.\n모두 동의하시면 여러분께서 편한 개인 연락처로 교환을 진행하시면 됩니다!',
+  },
+  {
+    label: '종료 인사',
+    text: '오늘 소개팅이 마무리되었습니다. 참여해주셔서 감사합니다!\n좋은 인연이 되셨길 바랍니다 :)',
+  },
+];
+
 function ChatBubble({ message, isOwn, senderName }) {
   if (message.message_type === 'system') {
     return (
@@ -349,18 +368,31 @@ function AdminChatDashboard() {
         <h3 className="text-sm font-bold text-gray-700 mb-2">
           {selectedEvent ? `"${eventGroups[selectedEvent]?.title}" 공지` : '전체 공지'}
         </h3>
+        {/* Macro buttons */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {BROADCAST_MACROS.map((macro, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setBroadcastMsg(macro.text)}
+              className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-primary hover:text-white hover:border-primary transition-all"
+            >
+              {macro.label}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2">
-          <input
-            type="text"
+          <textarea
             value={broadcastMsg}
             onChange={(e) => setBroadcastMsg(e.target.value)}
+            rows={broadcastMsg.includes('\n') ? 3 : 1}
             placeholder={selectedEvent ? '이 소개팅 채팅방에 보낼 메시지...' : '모든 채팅방에 보낼 메시지...'}
-            className="flex-1 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="flex-1 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
           />
           <button
             onClick={handleBroadcast}
             disabled={!broadcastMsg.trim() || broadcasting}
-            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300"
+            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:bg-gray-300 self-end"
           >
             {broadcasting ? '전송 중...' : '전송'}
           </button>

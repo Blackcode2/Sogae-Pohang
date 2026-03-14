@@ -37,26 +37,11 @@ function LandingPage() {
           updated.push(evt);
         }
       }
-      // For selection mode events, fetch applicant counts by gender
-      const enriched = await Promise.all(updated.map(async (evt) => {
-        if (evt.application_mode === 'selection' && evt.status === 'open') {
-          const { data: apps } = await supabase
-            .from('applications')
-            .select('user_id')
-            .eq('event_id', evt.id);
-          const userIds = (apps || []).map(a => a.user_id);
-          let maleCount = 0, femaleCount = 0;
-          if (userIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from('profiles')
-              .select('user_id, gender')
-              .in('user_id', userIds);
-            maleCount = (profiles || []).filter(p => p.gender === '남자').length;
-            femaleCount = (profiles || []).filter(p => p.gender === '여자').length;
-          }
-          return { ...evt, applicant_male: maleCount, applicant_female: femaleCount };
-        }
-        return evt;
+      // Use current_male/current_female from matching_events (readable by all users)
+      const enriched = updated.map((evt) => ({
+        ...evt,
+        applicant_male: evt.current_male,
+        applicant_female: evt.current_female,
       }));
       setEvents(enriched);
       setLoading(false);
