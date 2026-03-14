@@ -29,7 +29,8 @@ VITE_SUPABASE_ANON_KEY=<supabase-anon-key>
 
 - **Framework**: React 19 + Vite 7, JavaScript (JSX, no TypeScript)
 - **Routing**: React Router DOM v7 (BrowserRouter in App.jsx)
-- **Backend**: Supabase (Auth + Database + Realtime + Storage, no custom server)
+- **Backend**: Supabase (Auth + Database + Realtime + Storage + Edge Functions, no custom server)
+- **Email**: Resend (Supabase Edge Function에서 호출, 매칭 완료 알림)
 - **Styling**: Tailwind CSS via CDN with custom theme in index.html (primary color `#007AFF`, Pretendard Korean font)
 - **State**: React hooks only (useState, useContext), no global state library
 - **Auth**: Google OAuth only via Supabase Auth SDK, with AuthContext provider
@@ -50,6 +51,8 @@ VITE_SUPABASE_ANON_KEY=<supabase-anon-key>
 - `src/hooks/` — useAuth, useChat (realtime chat), useAdminChat (admin chat dashboard)
 - `src/lib/constants.js` — All form options, admin emails, domain mappings, event types, photo settings
 - `src/lib/matching.js` — Matching algorithm (compatibility scoring + Gale-Shapley stable matching)
+- `src/lib/notifications.js` — Email notification helper (Supabase Edge Function 호출)
+- `supabase/functions/send-match-notification/` — Edge Function: 매칭 완료 이메일 발송 (Resend API)
 - `src/lib/supabase.js` — Supabase client init (reads env vars via `import.meta.env`)
 - `src/assets/` — Images and SVG logo
 

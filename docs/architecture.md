@@ -44,8 +44,9 @@ Sogae-Pohang/
 │   │   ├── useAuth.js           # useAuth hook
 │   │   └── useChat.js           # Chat room hook (messages, realtime, send)
 │   ├── lib/
-│   │   ├── constants.js         # All form options, admin emails, domains, event types
+│   │   ├── constants.js         # All form options, admin emails, domains, event types, description templates
 │   │   ├── matching.js          # Matching algorithm (compatibility score + Gale-Shapley)
+│   │   ├── notifications.js     # Email notification helper (Supabase Edge Function 호출)
 │   │   └── supabase.js          # Supabase client init
 │   └── pages/
 │       ├── AdminPage.jsx        # Admin dashboard (events + users + chat tabs)
@@ -68,6 +69,10 @@ Sogae-Pohang/
 │       ├── proposal2.md              # v2 project proposal (Korean)
 │       ├── profile-prd.md            # Profile form PRD / revision spec
 │       └── supabase-schema.sql       # SQL schema for Supabase (v2)
+├── supabase/
+│   └── functions/
+│       └── send-match-notification/  # Edge Function: 매칭 완료 이메일 알림 (Resend)
+│           └── index.ts
 ├── index.html                   # HTML entry with Tailwind config
 ├── package.json                 # Dependencies & scripts
 ├── vite.config.js               # Vite configuration
@@ -155,7 +160,8 @@ Backend (Supabase)
   │   ├── chat_participants   (채팅방 참여자)
   │   └── chat_messages       (채팅 메시지)
   ├── Realtime (chat_messages INSERT 구독)
-  └── Storage (blind-photos 버킷)
+  ├── Storage (blind-photos 버킷)
+  └── Edge Functions (send-match-notification → Resend 이메일 발송)
 ```
 
 ## Key Subsystems
@@ -172,9 +178,10 @@ Backend (Supabase)
 - 종료일이 지난 open 이벤트는 프론트에서 자동으로 closed 처리
 
 ### Matching System
-- 가중치 기반 호환성 점수 계산 (`calculateCompatibility`)
+- 가중치 기반 호환성 점수 계산 (`calculateCompatibility`) — 나이, 키, 체형, 성격 등
 - 게일-섀플리 안정 매칭 알고리즘 (`galeShapley`)
 - 매칭 완료 시 자동으로 채팅방 생성
+- 매칭 완료 시 Supabase Edge Function을 통해 Resend로 이메일 알림 발송
 
 ### Chat System
 - Supabase Realtime 기반 실시간 채팅

@@ -8,6 +8,7 @@ import {
   APPLICATION_MODES, APPLICATION_MODE_LABELS, EVENT_DESCRIPTION_TEMPLATES,
 } from '../lib/constants';
 import AdminChatDashboard from '../components/AdminChatDashboard';
+import { sendMatchNotifications } from '../lib/notifications';
 
 function AdminPage() {
   const [tab, setTab] = useState('events');
@@ -226,6 +227,27 @@ function AdminPage() {
       fetchData();
       await fetchMatchResults(eventId);
       if (selectedEventId === eventId) await openEventDetail(eventId);
+
+      // Send email notifications
+      try {
+        const matchedUserIds = results.flatMap((r) => [r.male_user_id, r.female_user_id]);
+        const { data: profilesForEmail } = await supabase
+          .from('profiles')
+          .select('user_id, nickname')
+          .in('user_id', matchedUserIds);
+
+        const currentEvent = events.find((e) => e.id === eventId);
+        const notificationData = matchedUserIds.map((userId) => ({
+          userId,
+          nickname: (profilesForEmail || []).find((p) => p.user_id === userId)?.nickname || '참가자',
+        }));
+
+        const emailResult = await sendMatchNotifications(notificationData, currentEvent?.title || '소개팅');
+        setMessage((prev) => `${prev} (이메일 ${emailResult.sent}건 발송)`);
+      } catch (emailErr) {
+        console.error('이메일 알림 실패:', emailErr);
+        setMessage((prev) => `${prev} (이메일 발송 실패)`);
+      }
     } catch (err) {
       setError('매칭 실패: ' + err.message);
     } finally {

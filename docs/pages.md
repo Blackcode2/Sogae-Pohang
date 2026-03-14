@@ -205,7 +205,7 @@ Real-time chat room for matched couples + admin.
   - 사진 클릭 시 전체 화면 모달
   - 매칭 결과 보기 (completed 상태)
 - Status transitions: open → closed → completed → ended
-- Closed 상태에서 "매칭 실행" 버튼 (게일-섀플리 알고리즘)
+- Closed 상태에서 "매칭 실행" 버튼 (게일-섀플리 알고리즘). 실행 전 성별별 참가 인원 확인 alert 표시. 매칭 완료 후 Edge Function을 통해 참가자에게 이메일 알림 발송 (Resend)
 - Completed 상태에서:
   - "매칭 결과 보기" → 매칭된 커플 목록 + 호환 점수 표시
   - "채팅방 열기/닫기/다시 열기" 버튼
